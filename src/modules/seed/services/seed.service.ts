@@ -27,19 +27,20 @@ export class SeedService {
   command: 'seed:users',
   describe: 'Seed only 2 super-admin users',
 })
-async seedUsers() {
-  const superAdmins = [
+async seedUsers() {  const superAdmins = [
     {
       name: 'Super Admin One',
       email: 'superadmin1@example.com',
       password: 'superadmin123',
       role: UserRole.SUPER_ADMIN,
+      branch: 'HEAD_OFFICE',
     },
     {
       name: 'Super Admin Two',
       email: 'superadmin2@example.com',
       password: 'superadmin456',
       role: UserRole.SUPER_ADMIN,
+      branch: 'HEAD_OFFICE',
     },
   ];
 

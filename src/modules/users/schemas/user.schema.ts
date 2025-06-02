@@ -23,6 +23,9 @@ export class User {
 
   @Prop()
   lastLogin?: Date;
+
+  @Prop({ required: true })
+  branch: string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

@@ -25,11 +25,13 @@ export class AuthService {
       if (!isPasswordValid) {
         console.log('Invalid password for user:', email);
         throw new UnauthorizedException('Invalid password');
-      }
-
-      console.log('Password valid, login successful');
+      }      console.log('Password valid, login successful');
       const { password: _, ...result } = user.toJSON();
-      return result;
+      console.log('User data before return:', result);
+      return {
+        ...result,
+        branch: result.branch || 'HEAD_OFFICE' // Provide default for existing users
+      };
     } catch (error) {
       console.error('Login error:', error.message);
       throw new UnauthorizedException(error.message);
@@ -43,6 +45,7 @@ export class AuthService {
         sub: user._id ? user._id.toString() : user.id,
         role: user.role,
         name: user.name,
+        branch: user.branch,
       };
       console.log('JWT Payload:', payload);
       
@@ -57,6 +60,7 @@ export class AuthService {
           email: payload.email,
           role: payload.role,
           name: payload.name,
+          branch: payload.branch,
         }
       };
     } catch (error) {

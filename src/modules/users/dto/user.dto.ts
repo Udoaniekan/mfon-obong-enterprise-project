@@ -1,4 +1,5 @@
 import { IsEmail, IsEnum, IsNotEmpty, IsString, MinLength } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { UserRole } from '../../../common/enums';
 
 export class CreateUserDto {
@@ -13,11 +14,15 @@ export class CreateUserDto {
   @IsNotEmpty()
   @IsString()
   @MinLength(6)
-  password: string;
+  password: string; 
 
   @IsNotEmpty()
   @IsEnum(UserRole)
   role: UserRole;
+  
+  @IsNotEmpty()
+  @IsString()
+  branch: string;
 }
 
 export class UpdateUserDto {
@@ -33,4 +38,7 @@ export class UpdateUserDto {
 
   @IsEnum(UserRole)
   role?: UserRole;
+
+  @IsString()
+  branch?: string;
 }

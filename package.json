@@ -19,8 +19,7 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "seed": "ts-node -r tsconfig-paths/register src/cli.ts",
-    "seed:all": "npm run seed -- seed:all",
-    "seed:users": "npm run seed -- seed:users",
+    "seed:all": "npm run seed -- seed:all",    "seed:users": "npm run seed -- seed:users",
     "seed:products": "npm run seed -- seed:products",
     "seed:clients": "npm run seed -- seed:clients"
   },
