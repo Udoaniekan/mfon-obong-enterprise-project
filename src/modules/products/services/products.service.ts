@@ -10,55 +10,57 @@ import {
   CreateProductDto,
   UpdateProductDto,
   UpdateStockDto,
+  StockOperation,
 } from '../dto/product.dto';
-import { InventoryUtils } from '../../../common/utils/inventory.utils';
-import { PackagingUnit } from '../../../common/enums';
+import { CategoriesService } from '../../categories/services/categories.service';
 
 @Injectable()
 export class ProductsService {
   constructor(
     @InjectModel(Product.name) private productModel: Model<ProductDocument>,
+    private readonly categoriesService: CategoriesService,
   ) {}
 
-  async create(createProductDto: CreateProductDto): Promise<ProductDocument> {
-    // Validate secondary unit configuration
-    if (createProductDto.secondaryUnit && !createProductDto.conversionRate) {
-      throw new BadRequestException('Conversion rate is required when secondary unit is specified');
+  async create(createProductDto: CreateProductDto): Promise<Product> {
+    // Validate that the unit matches the category
+    const category = await this.categoriesService.findById(createProductDto.categoryId);
+    if (!category.units.includes(createProductDto.unit)) {
+      throw new BadRequestException(`Invalid unit ${createProductDto.unit} for category ${category.name}`);
     }
 
-    const bulkPrices = new Map<number, number>();
-    if (createProductDto.bulkPrices) {
-      createProductDto.bulkPrices.forEach((bp) => {
-        bulkPrices.set(bp.quantity, bp.price);
-      });
+    // Check if a product with the same categoryId and unit already exists
+    const existingProduct = await this.productModel.findOne({
+      categoryId: createProductDto.categoryId,
+      unit: createProductDto.unit
+    });
+
+    if (existingProduct) {
+      throw new BadRequestException(
+        `A product with unit ${createProductDto.unit} already exists for category ${category.name}. Please choose a different unit.`
+      );
     }
 
     const product = new this.productModel({
       ...createProductDto,
-      bulkPrices,
-      priceHistory: [{ price: createProductDto.primaryUnitPrice, date: new Date() }],
+      priceHistory: [{ price: createProductDto.unitPrice, date: new Date() }],
     });
-
-    // Set initial secondary unit stock based on conversion if applicable
-    if (product.secondaryUnit && product.conversionRate) {
-      product.secondaryUnitStock = InventoryUtils.convertUnits(
-        product.primaryUnit,
-        product.secondaryUnit,
-        product.primaryUnitStock,
-        product.conversionRate
-      );
-    }
 
     return product.save();
   }
 
   async findAll(includeInactive = false): Promise<ProductDocument[]> {
     const query = includeInactive ? {} : { isActive: true };
-    return this.productModel.find(query).exec();
+    return this.productModel
+      .find(query)
+      .populate('categoryId', 'name units')
+      .exec();
   }
 
   async findById(id: string): Promise<ProductDocument> {
-    const product = await this.productModel.findById(id);
+    const product = await this.productModel
+      .findById(id)
+      .populate('categoryId', 'name units')
+      .exec();
     if (!product) {
       throw new NotFoundException('Product not found');
     }
@@ -68,91 +70,59 @@ export class ProductsService {
   async update(id: string, updateProductDto: UpdateProductDto): Promise<ProductDocument> {
     const product = await this.findById(id);
 
-    // Track price history
-    if (updateProductDto.primaryUnitPrice && updateProductDto.primaryUnitPrice !== product.primaryUnitPrice) {
+    // Validate that the unit matches the category if changing unit or category
+    if (updateProductDto.unit || updateProductDto.categoryId) {
+      const categoryId = updateProductDto.categoryId || product.categoryId.toString();
+      const category = await this.categoriesService.findById(categoryId);
+      const unit = updateProductDto.unit || product.unit;
+
+      if (!category.units.includes(unit)) {
+        throw new BadRequestException(`Invalid unit ${unit} for category ${category.name}`);
+      }
+    }
+
+    // Track price history if price is changing
+    if (updateProductDto.unitPrice && updateProductDto.unitPrice !== product.unitPrice) {
       product.priceHistory.push({
-        price: updateProductDto.primaryUnitPrice,
+        price: updateProductDto.unitPrice,
         date: new Date(),
       });
     }
 
-    // Validate and update bulk prices
-    if (updateProductDto.bulkPrices) {
-      const bulkPrices = new Map<number, number>();
-      updateProductDto.bulkPrices.forEach((bp) => {
-        if (bp.price > updateProductDto.primaryUnitPrice) {
-          throw new BadRequestException('Bulk price cannot be higher than primary unit price');
-        }
-        bulkPrices.set(bp.quantity, bp.price);
-      });
-      product.bulkPrices = bulkPrices;
-    }
-
-    // Validate secondary unit configuration
-    if (updateProductDto.secondaryUnit && !updateProductDto.conversionRate && !product.conversionRate) {
-      throw new BadRequestException('Conversion rate is required when adding secondary unit');
-    }
-
     Object.assign(product, updateProductDto);
-
-    // Update secondary unit stock if conversion rate or primary stock changes
-    if (product.secondaryUnit && product.conversionRate) {
-      product.secondaryUnitStock = InventoryUtils.convertUnits(
-        product.primaryUnit,
-        product.secondaryUnit,
-        product.primaryUnitStock,
-        product.conversionRate
-      );
-    }
-
     return product.save();
-  }
-
+  }  
+  
   async updateStock(id: string, updateStockDto: UpdateStockDto): Promise<ProductDocument> {
+
     const product = await this.findById(id);
+    
     const { quantity, unit, operation } = updateStockDto;
 
-    // Validate the unit exists for the product
-    if (unit !== product.primaryUnit && unit !== product.secondaryUnit) {
-      throw new BadRequestException(`Invalid unit ${unit} for this product`);
+    // Get the populated categoryId from the product
+    const categoryId = typeof product.categoryId === 'object' && product.categoryId !== null
+      ? (product.categoryId as any)._id 
+      : product.categoryId;
+
+    // Validate the unit matches the product's category
+    const category = await this.categoriesService.findById(categoryId.toString());
+    if (!category) {
+      throw new NotFoundException('Category not found');
     }
 
-    let primaryUnitQuantity: number;
-    
-    // Convert quantity to primary unit if necessary
-    if (unit === product.secondaryUnit) {
-      if (!product.conversionRate) {
-        throw new BadRequestException('Product does not have a conversion rate defined');
-      }
-      primaryUnitQuantity = InventoryUtils.convertUnits(
-        unit,
-        product.primaryUnit,
-        quantity,
-        product.conversionRate
-      );
-    } else {
-      primaryUnitQuantity = quantity;
+    if (!category.units.includes(unit)) {
+      throw new BadRequestException(`Invalid unit ${unit} for category ${category.name}`);
     }
 
-    // Validate and update stock
-    if (operation === 'subtract' && product.primaryUnitStock < primaryUnitQuantity) {
+    // Validate stock level for subtraction
+    if (operation === StockOperation.SUBTRACT && product.stock < quantity) {
       throw new BadRequestException('Insufficient stock');
     }
 
-    // Update primary unit stock
-    product.primaryUnitStock = operation === 'add'
-      ? product.primaryUnitStock + primaryUnitQuantity
-      : product.primaryUnitStock - primaryUnitQuantity;
-
-    // Update secondary unit stock if applicable
-    if (product.secondaryUnit && product.conversionRate) {
-      product.secondaryUnitStock = InventoryUtils.convertUnits(
-        product.primaryUnit,
-        product.secondaryUnit,
-        product.primaryUnitStock,
-        product.conversionRate
-      );
-    }
+    // Update stock
+    product.stock = operation === StockOperation.ADD
+      ? product.stock + quantity 
+      : product.stock - quantity;
 
     return product.save();
   }
@@ -175,55 +145,21 @@ export class ProductsService {
       .find({
         isActive: true,
         $expr: {
-          $lte: ['$primaryUnitStock', '$minStockLevel']
+          $lte: ['$stock', '$minStockLevel']
         }
       })
+      .populate('categoryId', 'name units')
       .exec();
   }
 
-  async findByType(type: string): Promise<ProductDocument[]> {
+  async findByCategory(categoryId: string): Promise<ProductDocument[]> {
     return this.productModel
-      .find({ type, isActive: true })
+      .find({ categoryId, isActive: true })
+      .populate('categoryId', 'name units')
       .exec();
   }
 
-  calculateProductValue(product: Product | ProductDocument): number {
-    return InventoryUtils.calculateTotalValue(
-      product.primaryUnitPrice,
-      product.primaryUnitStock,
-      product.secondaryUnitPrice,
-      product.secondaryUnitStock
-    );
-  }
-
-  calculatePrice(product: Product | ProductDocument, quantity: number, unit: PackagingUnit): number {
-    let primaryUnitQuantity = quantity;
-    
-    // Convert to primary unit if necessary
-    if (unit === product.secondaryUnit) {
-      if (!product.conversionRate) {
-        throw new BadRequestException('Product does not have a conversion rate defined');
-      }
-      primaryUnitQuantity = InventoryUtils.convertUnits(
-        unit,
-        product.primaryUnit,
-        quantity,
-        product.conversionRate
-      );
-    }
-
-    // Apply bulk pricing if available
-    if (product.bulkPrices && product.bulkPrices.size > 0) {
-      return InventoryUtils.calculateBulkPrice(
-        product.primaryUnitPrice,
-        primaryUnitQuantity,
-        product.bulkPrices
-      );
-    }
-
-    // Regular pricing
-    return unit === product.primaryUnit
-      ? quantity * product.primaryUnitPrice
-      : quantity * (product.secondaryUnitPrice || 0);
+  calculatePrice(product: Product | ProductDocument, quantity: number): number {
+    return quantity * product.unitPrice;
   }
 }

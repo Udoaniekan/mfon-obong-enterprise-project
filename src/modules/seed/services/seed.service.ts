@@ -1,159 +1,109 @@
 import { Command } from 'nestjs-command';
 import { ConflictException, Injectable } from '@nestjs/common';
 import { UsersService } from '../../users/services/users.service';
-import { ProductsService } from '../../products/services/products.service';
-import { ClientsService } from '../../clients/services/clients.service';
-import { UserRole, PackagingUnit } from '../../../common/enums';
+import { CategoriesService } from '../../categories/services/categories.service';
+import { UserRole } from '../../../common/enums';
 
 @Injectable()
 export class SeedService {
   constructor(
     private readonly usersService: UsersService,
-    private readonly productsService: ProductsService,
-    private readonly clientsService: ClientsService,
+    private readonly categoriesService: CategoriesService,
   ) {}
 
   @Command({
-    command: 'seed:all',
-    describe: 'Seed all data',
+    command: 'seed:superadmin',
+    describe: 'Seed initial super-admin user',
   })
-  async seedAll() {
-    await this.seedUsers();
-    await this.seedProducts();
-    await this.seedClients();
-  }
-
-  @Command({
-  command: 'seed:users',
-  describe: 'Seed only 2 super-admin users',
-})
-async seedUsers() {  const superAdmins = [
-    {
-      name: 'Super Admin One',
-      email: 'superadmin1@example.com',
+  async seedSuperAdmin() {
+    const superAdmin = {
+      name: 'Super Admin',
+      email: 'superadmin@example.com',
       password: 'superadmin123',
       role: UserRole.SUPER_ADMIN,
       branch: 'HEAD_OFFICE',
-    },
-    {
-      name: 'Super Admin Two',
-      email: 'superadmin2@example.com',
-      password: 'superadmin456',
-      role: UserRole.SUPER_ADMIN,
-      branch: 'HEAD_OFFICE',
-    },
-  ];
+    };
 
-  for (const user of superAdmins) {
     try {
-      await this.usersService.create(user);
-      console.log(`Created super admin: ${user.email}`);
+      await this.usersService.create(superAdmin);
+      console.log(`Created super admin: ${superAdmin.email}`);
     } catch (error) {
       if (error instanceof ConflictException) {
-        console.log(`Super admin already exists: ${user.email}`);
+        console.log(`Super admin already exists: ${superAdmin.email}`);
       } else {
-        console.error(`Error creating super admin ${user.email}:`, error.message);
+        console.error(`Error creating super admin ${superAdmin.email}:`, error.message);
       }
     }
   }
-}
 
   @Command({
-    command: 'seed:products',
-    describe: 'Seed products data',
+    command: 'seed:categories',
+    describe: 'Seed initial product categories',
   })
-  async seedProducts() {
-    const products = [
+  async seedCategories() {
+    const categories = [
+      {
+        name: 'Marine Board',
+        units: ['Sheet'],
+        description: 'Marine grade plywood boards',
+      },
+      {
+        name: 'Binding Wire',
+        units: ['Bundle of 20KG', 'Bundle of 10KG'],
+        description: 'Steel binding wire for construction',
+      },
+      {
+        name: 'Rod',
+        units: [
+          'Length of quarter',
+          'Length of 8MM',
+          'Length of 10MM',
+          'Length of 12MM',
+          'Length of 16MM',
+          'Length of 20MM',
+          'Length of 25MM',
+        ],
+        description: 'Steel rods for reinforcement',
+      },
+      {
+        name: 'Nail',
+        units: [
+          'Bag of 1.5 Inches',
+          'Bag of 2 Inches',
+          'Bag of 3 Inches',
+          'Bag of 4 Inches',
+          'Bag of 5 Inches',
+          'Bag of Cupper',
+          'LBS of 1.5 Inches',
+          'LBS of 2 Inches',
+          'LBS of 3 Inches',
+          'LBS of 4 Inches',
+          'LBS of 5 Inches',
+          'LBS of Cupper',
+        ],
+        description: 'Various types and sizes of nails',
+      },
+      {
+        name: 'BRC',
+        units: ['Bundle of 4MM', 'Bundle of 5MM'],
+        description: 'BRC mesh for concrete reinforcement',
+      },
       {
         name: 'Cement',
-        type: 'Building Materials',
-        primaryUnit: PackagingUnit.BAG,
-        secondaryUnit: PackagingUnit.POUND,
-        conversionRate: 110,
-        primaryUnitPrice: 4500,
-        secondaryUnitPrice: 45,
-        primaryUnitStock: 100,
-        secondaryUnitStock: 550,
-        minStockLevel: 20,
-        bulkPrices: [
-          { quantity: 10, price: 4300 },
-          { quantity: 50, price: 4000 },
-        ],
-      },
-      {
-        name: 'Sand',
-        type: 'Building Materials',
-        primaryUnit: PackagingUnit.BAG,
-        primaryUnitPrice: 2000,
-        primaryUnitStock: 200,
-        minStockLevel: 50,
-        bulkPrices: [
-          { quantity: 20, price: 1800 },
-          { quantity: 100, price: 1600 },
-        ],
-      },
-      {
-        name: 'Steel Rods',
-        type: 'Construction',
-        primaryUnit: PackagingUnit.PIECE,
-        primaryUnitPrice: 3500,
-        primaryUnitStock: 500,
-        minStockLevel: 100,
-        bulkPrices: [
-          { quantity: 50, price: 3300 },
-          { quantity: 200, price: 3000 },
-        ],
+        units: ['Bag of Dangote', 'Bag of Larfarge'],
+        description: 'Portland cement for construction',
       },
     ];
 
-    for (const product of products) {
+    for (const category of categories) {
       try {
-        await this.productsService.create(product);
-        console.log(`Created product: ${product.name}`);
+        await this.categoriesService.create(category);
+        console.log(`Created category: ${category.name}`);
       } catch (error) {
-        console.error(`Error creating product ${product.name}:`, error.message);
-      }
-    }
-  }
-
-  @Command({
-    command: 'seed:clients',
-    describe: 'Seed clients data',
-  })
-  async seedClients() {
-    const clients = [
-      {
-        name: 'John Construction Ltd',
-        phone: '2348012345678',
-        email: 'john@construction.com',
-        address: '123 Builder Street',
-        isRegistered: true,
-      },
-      {
-        name: 'Sarah Builders',
-        phone: '2348087654321',
-        email: 'sarah@builders.com',
-        address: '456 Constructor Avenue',
-        isRegistered: true,
-      },
-      {
-        name: 'Mike Contractors',
-        phone: '2348023456789',
-        email: 'mike@contractors.com',
-        address: '789 Project Road',
-        isRegistered: true,
-      },
-    ];
-
-    for (const client of clients) {
-      try {
-        await this.clientsService.create(client);
-        console.log(`Created client: ${client.name}`);
-      } catch (error) {
-        if (error.code === 11000) {
-          console.log(`Client already exists: ${client.name}`);
+        if (error instanceof ConflictException) {
+          console.log(`Category already exists: ${category.name}`);
         } else {
-          console.error(`Error creating client ${client.name}:`, error.message);
+          console.error(`Error creating category ${category.name}:`, error.message);
         }
       }
     }

@@ -4,8 +4,6 @@ import { Model } from 'mongoose';
 import { Transaction, TransactionDocument } from '../../transactions/schemas/transaction.schema';
 import { Product, ProductDocument } from '../../products/schemas/product.schema';
 import { Client, ClientDocument } from '../../clients/schemas/client.schema';
-import { PackagingUnit } from '../../../common/enums';
-
 interface SalesReportProduct {
   productId: string;
   name: string;
@@ -19,7 +17,7 @@ interface ProductSalesSummary {
   name: string;
   quantity: number;
   revenue: number;
-  units: Map<PackagingUnit, number>;
+  units: Map<string, number>;
 }
 
 export interface SalesReport {
@@ -90,7 +88,7 @@ export class ReportsService {
           name: item.productName,
           quantity: 0,
           revenue: 0,
-          units: new Map<PackagingUnit, number>(),
+          units: new Map<string, number>(),
         };
 
         currentProduct.quantity += item.quantity;
@@ -146,7 +144,7 @@ export class ReportsService {
       name: string;
       currentStock: number;
       minStockLevel: number;
-      unit: PackagingUnit;
+      unit: string;
     }> = [];
 
     let totalValue = 0;
@@ -154,28 +152,23 @@ export class ReportsService {
     // Process each product
     products.forEach((product) => {
       // Calculate total value
-      const primaryValue = product.primaryUnitPrice * product.primaryUnitStock;
-      const secondaryValue = product.secondaryUnitPrice 
-        ? product.secondaryUnitPrice * (product.secondaryUnitStock || 0)
-        : 0;
-      
-      const productValue = primaryValue + secondaryValue;
+      const productValue = product.unitPrice * product.stock;
       totalValue += productValue;
 
       // Track low stock products
-      if (product.primaryUnitStock <= product.minStockLevel) {
+      if (product.stock <= product.minStockLevel) {
         lowStockProducts.push({
           id: product._id.toString(),
           name: product.name,
-          currentStock: product.primaryUnitStock,
+          currentStock: product.stock,
           minStockLevel: product.minStockLevel,
-          unit: product.primaryUnit,
+          unit: product.unit,
         });
       }
 
       // Update category statistics
-      const category = product.type;
-      const currentCategoryStats = categoryStats.get(category) || {
+      const categoryId = product.categoryId;
+      const currentCategoryStats = categoryStats.get(categoryId) || {
         count: 0,
         value: 0,
         lowStock: 0,
@@ -183,11 +176,11 @@ export class ReportsService {
 
       currentCategoryStats.count++;
       currentCategoryStats.value += productValue;
-      if (product.primaryUnitStock <= product.minStockLevel) {
+      if (product.stock <= product.minStockLevel) {
         currentCategoryStats.lowStock++;
       }
 
-      categoryStats.set(category, currentCategoryStats);
+      categoryStats.set(categoryId, currentCategoryStats);
     });
 
     // Convert Map to object for response

@@ -2,8 +2,6 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
 import { Client } from '../../clients/schemas/client.schema';
 import { User } from '../../users/schemas/user.schema';
-import { PackagingUnit } from '../../../common/enums';
-
 export type TransactionDocument = Transaction & Document;
 
 @Schema({ timestamps: true })
@@ -17,8 +15,8 @@ export class TransactionItem {
   @Prop({ required: true })
   quantity: number;
 
-  @Prop({ required: true, enum: PackagingUnit })
-  unit: PackagingUnit;
+  @Prop({ required: true })
+  unit: string;
 
   @Prop({ required: true })
   unitPrice: number;
@@ -70,6 +68,9 @@ export class Transaction {
 
   @Prop()
   pickupDate?: Date;
+
+  @Prop({ required: true })
+  branch: string;
 
   @Prop({ type: String, enum: ['PENDING', 'COMPLETED', 'CANCELLED'], default: 'PENDING' })
   status: string;

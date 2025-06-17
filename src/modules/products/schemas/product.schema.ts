@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
-import { PackagingUnit } from '../../../common/enums';
+import { Document, Schema as MongooseSchema } from 'mongoose';
+import { Category } from '../../categories/schemas/category.schema';
+import { UserRole } from '../../../common/enums';
 
 export type ProductDocument = Product & Document;
 
@@ -9,32 +10,17 @@ export class Product {
   @Prop({ required: true })
   name: string;
 
-  @Prop({ required: true })
-  type: string;
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: Category.name, required: true })
+  categoryId: string;
 
   @Prop({ required: true })
-  primaryUnit: PackagingUnit;
-
-  @Prop()
-  secondaryUnit?: PackagingUnit;
+  unit: string;
 
   @Prop({ required: true })
-  conversionRate?: number; // e.g., 1 bag = 50 pounds
+  unitPrice: number;
 
   @Prop({ required: true })
-  primaryUnitPrice: number;
-
-  @Prop()
-  secondaryUnitPrice?: number;
-
-  @Prop({ type: Map, of: Number })
-  bulkPrices: Map<number, number>; // quantity threshold -> price
-
-  @Prop({ required: true })
-  primaryUnitStock: number;
-
-  @Prop()
-  secondaryUnitStock?: number;
+  stock: number;
 
   @Prop({ required: true })
   minStockLevel: number;

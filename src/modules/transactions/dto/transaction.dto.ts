@@ -52,6 +52,9 @@ export class CreateTransactionDto {
   @IsString()
   paymentMethod?: string;
 
+  @IsString()
+  branch: string;
+
   @IsOptional()
   @IsString()
   notes?: string;
@@ -111,4 +114,8 @@ export class QueryTransactionsDto {
   @IsOptional()
   @IsBoolean()
   isPickedUp?: boolean;
+
+  @IsOptional()
+  @IsString()
+  branch?: string;
 }

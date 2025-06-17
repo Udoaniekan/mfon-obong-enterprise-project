@@ -4,13 +4,6 @@ export enum UserRole {
   STAFF = 'STAFF',
 }
 
-export enum PackagingUnit {
-  BAG = 'BAG',
-  CARTON = 'CARTON',
-  POUND = 'POUND',
-  PIECE = 'PIECE',
-}
-
 export interface BaseDocument {
   _id: string;
   createdAt: Date;

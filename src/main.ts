@@ -11,13 +11,12 @@ async function bootstrap() {
   
   // Global prefix
   app.setGlobalPrefix('api');
-  
-  // Global pipes
+    // Global pipes
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
       transform: true,
-      forbidNonWhitelisted: true,
+      forbidNonWhitelisted: false,
       transformOptions: {
         enableImplicitConversion: true,
       },

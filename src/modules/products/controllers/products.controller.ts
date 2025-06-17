@@ -14,7 +14,7 @@ import {
   UpdateProductDto,
   UpdateStockDto,
 } from '../dto/product.dto';
-import { Product } from '../schemas/product.schema';
+import { Product, ProductDocument } from '../schemas/product.schema';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { UserRole } from '../../../common/enums';
@@ -47,6 +47,12 @@ export class ProductsController {
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF)
   async findOne(@Param('id') id: string): Promise<Product> {
     return this.productsService.findById(id);
+  }
+
+  @Get(':id/category')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF)
+  async findByCategory(@Param('id') id: string): Promise<ProductDocument[]> {
+    return this.productsService.findByCategory(id);
   }
 
   @Patch(':id')

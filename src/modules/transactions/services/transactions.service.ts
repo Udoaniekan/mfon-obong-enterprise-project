@@ -9,7 +9,7 @@ import { Transaction, TransactionDocument } from '../schemas/transaction.schema'
 import { Product } from '../../products/schemas/product.schema';
 import { ClientsService } from '../../clients/services/clients.service';
 import { ProductsService } from '../../products/services/products.service';
-import { PackagingUnit } from '../../../common/enums';
+import { StockOperation } from '../../products/dto/product.dto';
 import {
   CreateTransactionDto,
   UpdateTransactionDto,
@@ -30,6 +30,7 @@ export class TransactionsService {
   async create(createTransactionDto: CreateTransactionDto, userId: string): Promise<Transaction> {
     // Validate client
     const client = await this.clientsService.findById(createTransactionDto.clientId);
+    const clientId = (client as any)._id;
 
     // Process items and calculate totals
     let subtotal = 0;
@@ -37,23 +38,24 @@ export class TransactionsService {
       createTransactionDto.items.map(async (item) => {
         const product = await this.productsService.findById(item.productId);
         
-        // Validate stock availability
-        if (item.unit === product.primaryUnit && product.primaryUnitStock < item.quantity) {
-          throw new BadRequestException(`Insufficient stock for ${product.name}`);
-        } else if (item.unit === product.secondaryUnit && product.secondaryUnitStock < item.quantity) {
-          throw new BadRequestException(`Insufficient stock for ${product.name}`);
+        // Validate unit matches product category
+        if (item.unit !== product.unit) {
+          throw new BadRequestException(`Invalid unit ${item.unit} for product ${product.name}. This product only accepts ${product.unit}`);
         }
 
-        // Calculate price with bulk pricing
-        const price = this.productsService.calculatePrice(product, item.quantity, item.unit as PackagingUnit);
+        // Validate stock availability
+        if (product.stock < item.quantity) {
+          throw new BadRequestException(`Insufficient stock for ${product.name}. Available: ${product.stock} ${product.unit}`);
+        }        // Calculate price 
+        const price = product.unitPrice * item.quantity;
         const itemSubtotal = price - (item.discount || 0);
         subtotal += itemSubtotal;
 
         return {
-          productId: (product as any)._id,
+          productId: product._id,
           productName: product.name,
           quantity: item.quantity,
-          unit: item.unit as PackagingUnit,
+          unit: item.unit,
           unitPrice: price / item.quantity,
           discount: item.discount || 0,
           subtotal: itemSubtotal,
@@ -66,7 +68,8 @@ export class TransactionsService {
 
     // Create transaction
     const transaction = new this.transactionModel({
-      invoiceNumber: await this.generateInvoiceNumber(),      clientId: (client as any)._id,
+      invoiceNumber: await this.generateInvoiceNumber(),
+      clientId,
       userId: new Types.ObjectId(userId),
       items: processedItems,
       subtotal,
@@ -76,10 +79,11 @@ export class TransactionsService {
       paymentMethod: createTransactionDto.paymentMethod,
       notes: createTransactionDto.notes,
       status: amountPaid >= total ? 'COMPLETED' : 'PENDING',
+      branch: createTransactionDto.branch,
     });
 
     // Update client balance
-    await this.clientsService.addTransaction((client as any)._id.toString(), {
+    await this.clientsService.addTransaction(clientId.toString(), {
       type: 'PURCHASE',
       amount: total,
       description: `Invoice #${transaction.invoiceNumber}`,
@@ -87,11 +91,12 @@ export class TransactionsService {
     });
 
     // Update stock levels
-    await Promise.all(      transaction.items.map(async (item) => {
+    await Promise.all(
+      transaction.items.map(async (item) => {
         await this.productsService.updateStock(item.productId.toString(), {
           quantity: item.quantity,
-          unit: item.unit as PackagingUnit,
-          operation: 'subtract',
+          unit: item.unit,
+          operation: StockOperation.SUBTRACT,
         });
       }),
     );

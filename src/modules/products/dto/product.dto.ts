@@ -1,25 +1,12 @@
-import { Type } from 'class-transformer';
 import {
-  IsEnum,
   IsNotEmpty,
   IsNumber,
-  IsObject,
   IsOptional,
   IsString,
   Min,
-  ValidateNested,
+  IsMongoId,
+  IsEnum
 } from 'class-validator';
-import { PackagingUnit } from '../../../common/enums';
-
-export class BulkPriceDto {
-  @IsNumber()
-  @Min(1)
-  quantity: number;
-
-  @IsNumber()
-  @Min(0)
-  price: number;
-}
 
 export class CreateProductDto {
   @IsNotEmpty()
@@ -27,47 +14,21 @@ export class CreateProductDto {
   name: string;
 
   @IsNotEmpty()
+  @IsMongoId()
+  categoryId: string;
+
+  @IsNotEmpty()
   @IsString()
-  type: string;
-
+  unit: string;
   @IsNotEmpty()
-  @IsEnum(PackagingUnit)
-  primaryUnit: PackagingUnit;
-
-  @IsOptional()
-  @IsEnum(PackagingUnit)
-  secondaryUnit?: PackagingUnit;
-
-  @IsOptional()
   @IsNumber()
   @Min(0)
-  conversionRate?: number;
+  unitPrice: number;
 
   @IsNotEmpty()
   @IsNumber()
   @Min(0)
-  primaryUnitPrice: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  secondaryUnitPrice?: number;
-
-  @IsOptional()
-  @IsObject()
-  @ValidateNested({ each: true })
-  @Type(() => BulkPriceDto)
-  bulkPrices?: BulkPriceDto[];
-
-  @IsNotEmpty()
-  @IsNumber()
-  @Min(0)
-  primaryUnitStock: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  secondaryUnitStock?: number;
+  stock: number;
 
   @IsNotEmpty()
   @IsNumber()
@@ -75,36 +36,52 @@ export class CreateProductDto {
   minStockLevel: number;
 }
 
-export class UpdateProductDto extends CreateProductDto {
+export class UpdateProductDto {
   @IsOptional()
-  name: string;
+  @IsString()
+  name?: string;
+  @IsOptional()
+  @IsMongoId()
+  categoryId?: string;
 
   @IsOptional()
-  type: string;
+  @IsString()
+  unit?: string;
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  unitPrice?: number;
 
   @IsOptional()
-  primaryUnit: PackagingUnit;
+  @IsNumber()
+  @Min(0)
+  stock?: number;
 
   @IsOptional()
-  primaryUnitPrice: number;
+  @IsNumber()
+  @Min(0)
+  minStockLevel?: number;
 
   @IsOptional()
-  primaryUnitStock: number;
+  isActive?: boolean;
+}
 
-  @IsOptional()
-  minStockLevel: number;
+export enum StockOperation {
+  ADD = 'add',
+  SUBTRACT = 'subtract'
 }
 
 export class UpdateStockDto {
-  @IsNotEmpty()
   @IsNumber()
-  quantity: number;
-
+  @Min(1)
   @IsNotEmpty()
-  @IsEnum(PackagingUnit)
-  unit: PackagingUnit;
-
-  @IsNotEmpty()
+  readonly quantity: number;
+  
   @IsString()
-  operation: 'add' | 'subtract';
+  @IsNotEmpty()
+  readonly unit: string;
+
+  @IsEnum(StockOperation)
+  @IsNotEmpty()
+  readonly operation: StockOperation;
 }

@@ -9,6 +9,7 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
 import { ClientsModule } from './modules/clients/clients.module';
 import { ProductsModule } from './modules/products/products.module';
+import { CategoriesModule } from './modules/categories/categories.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { databaseConfig, jwtConfig } from './config/configuration';
@@ -29,6 +30,7 @@ import { databaseConfig, jwtConfig } from './config/configuration';
     }), 
     UsersModule,
     AuthModule,
+    CategoriesModule,
     ProductsModule,
     ClientsModule,
     TransactionsModule,
