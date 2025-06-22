@@ -13,6 +13,7 @@ import {
   CreateProductDto,
   UpdateProductDto,
   UpdateStockDto,
+  StockOperation,
 } from '../dto/product.dto';
 import { Product, ProductDocument } from '../schemas/product.schema';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -56,14 +57,12 @@ export class ProductsController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
-  async update(
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)  async update(
     @Param('id') id: string,
     @Body() updateProductDto: UpdateProductDto,
   ): Promise<Product> {
     return this.productsService.update(id, updateProductDto);
   }
-
   @Patch(':id/stock')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
   async updateStock(

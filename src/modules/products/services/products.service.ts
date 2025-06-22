@@ -91,40 +91,41 @@ export class ProductsService {
 
     Object.assign(product, updateProductDto);
     return product.save();
-  }  
-  
-  async updateStock(id: string, updateStockDto: UpdateStockDto): Promise<ProductDocument> {
-
-    const product = await this.findById(id);
+  }    async updateStock(id: string, updateStockDto: UpdateStockDto): Promise<ProductDocument> {
+    // Get the product first to validate it exists
+    const product = await this.productModel.findById(id).exec();
+    if (!product) {
+      throw new NotFoundException(`Product with ID ${id} not found`);
+    }
     
     const { quantity, unit, operation } = updateStockDto;
-
-    // Get the populated categoryId from the product
-    const categoryId = typeof product.categoryId === 'object' && product.categoryId !== null
-      ? (product.categoryId as any)._id 
-      : product.categoryId;
-
-    // Validate the unit matches the product's category
-    const category = await this.categoriesService.findById(categoryId.toString());
-    if (!category) {
-      throw new NotFoundException('Category not found');
+    
+    // Validate the unit matches
+    if (product.unit !== unit) {
+      throw new BadRequestException(`Unit mismatch: product has unit "${product.unit}", but operation specified "${unit}"`);
     }
-
-    if (!category.units.includes(unit)) {
-      throw new BadRequestException(`Invalid unit ${unit} for category ${category.name}`);
-    }
-
+    
     // Validate stock level for subtraction
     if (operation === StockOperation.SUBTRACT && product.stock < quantity) {
-      throw new BadRequestException('Insufficient stock');
+      throw new BadRequestException(`Insufficient stock: current ${product.stock}, requested ${quantity}`);
     }
-
-    // Update stock
-    product.stock = operation === StockOperation.ADD
-      ? product.stock + quantity 
+    
+    // Calculate new stock
+    const newStock = operation === StockOperation.ADD
+      ? product.stock + quantity
       : product.stock - quantity;
-
-    return product.save();
+    
+    // Use findOneAndUpdate to update in one atomic operation
+    await this.productModel.findOneAndUpdate(
+      { _id: id },
+      { $set: { stock: newStock } }
+    ).exec();
+    
+    // Return the updated product with populated fields
+    return this.productModel
+      .findById(id)
+      .populate('categoryId', 'name units')
+      .exec();
   }
 
   async remove(id: string): Promise<void> {

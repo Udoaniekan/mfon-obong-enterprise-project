@@ -27,12 +27,18 @@ export class CategoriesService {
     return this.categoryModel.find(query).exec();
   }
   async findById(id: string): Promise<CategoryDocument> {
-    console.log('Finding category by ID:', id);
-    console.log('ID type:', typeof id);
-    
     try {
+      // Check if we've received a stringified object instead of a simple ID
+      if (id.includes('ObjectId') && id.includes('_id')) {
+        // Extract the ObjectId from the string
+        const match = id.match(/ObjectId\('([0-9a-fA-F]{24})'\)/);
+        if (match && match[1]) {
+          // Use the extracted ID
+          id = match[1];
+        }
+      }
+      
       const category = await this.categoryModel.findById(id);
-      console.log('Found category:', JSON.stringify(category, null, 2));
       
       if (!category) {
         throw new NotFoundException('Category not found');
@@ -40,7 +46,7 @@ export class CategoriesService {
       return category;
     } catch (error) {
       console.error('Error finding category:', error);
-      throw error;
+      throw new NotFoundException(`Category lookup failed: ${error.message}`);
     }
   }
 
