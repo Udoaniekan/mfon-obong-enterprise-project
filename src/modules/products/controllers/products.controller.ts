@@ -77,4 +77,10 @@ export class ProductsController {
   async remove(@Param('id') id: string): Promise<void> {
     return this.productsService.remove(id);
   }
+
+  @Delete(':id/delete')
+  @Roles(UserRole.SUPER_ADMIN)
+  async hardRemove(@Param('id') id: string): Promise<void> {
+    return this.productsService.hardRemove(id);
+  }
 }
