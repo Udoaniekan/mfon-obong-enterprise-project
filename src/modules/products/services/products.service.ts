@@ -91,7 +91,9 @@ export class ProductsService {
 
     Object.assign(product, updateProductDto);
     return product.save();
-  }    async updateStock(id: string, updateStockDto: UpdateStockDto): Promise<ProductDocument> {
+  }    
+  
+  async updateStock(id: string, updateStockDto: UpdateStockDto): Promise<ProductDocument> {
     // Get the product first to validate it exists
     const product = await this.productModel.findById(id).exec();
     if (!product) {
