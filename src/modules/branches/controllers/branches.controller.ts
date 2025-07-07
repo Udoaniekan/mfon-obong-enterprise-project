@@ -7,6 +7,7 @@ import {
   Param,
   Delete,
   UseGuards,
+  Request,
 } from '@nestjs/common';
 import { BranchesService } from '../services/branches.service';
 import { CreateBranchDto, UpdateBranchDto } from '../dto/branch.dto';
@@ -29,14 +30,14 @@ export class BranchesController {
 
   @Get()
   @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER, UserRole.ADMIN, UserRole.STAFF)
-  async findAll(): Promise<Branch[]> {
-    return this.branchesService.findAll();
+  async findAll(@Request() req): Promise<Branch[]> {
+    return this.branchesService.findAll(req.user);
   }
 
   @Get(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER, UserRole.ADMIN, UserRole.STAFF)
-  async findOne(@Param('id') id: string): Promise<Branch> {
-    return this.branchesService.findById(id);
+  async findOne(@Param('id') id: string, @Request() req): Promise<Branch> {
+    return this.branchesService.findById(id, req.user);
   }
 
   @Patch(':id')
@@ -44,13 +45,14 @@ export class BranchesController {
   async update(
     @Param('id') id: string,
     @Body() updateBranchDto: UpdateBranchDto,
+    @Request() req,
   ): Promise<Branch> {
-    return this.branchesService.update(id, updateBranchDto);
+    return this.branchesService.update(id, updateBranchDto, req.user);
   }
 
   @Delete(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER)
-  async remove(@Param('id') id: string): Promise<void> {
-    return this.branchesService.remove(id);
+  @Roles(UserRole.MAINTAINER)
+  async remove(@Param('id') id: string, @Request() req): Promise<void> {
+    return this.branchesService.remove(id, req.user);
   }
 }
