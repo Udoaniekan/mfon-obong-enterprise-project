@@ -7,6 +7,7 @@ import {
   Param,
   Delete,
   UseGuards,
+  Request,
 } from '@nestjs/common';
 import { CategoriesService } from '../services/categories.service';
 import { CreateCategoryDto, UpdateCategoryDto } from '../dto/category.dto';
@@ -21,32 +22,32 @@ export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
 
   @Post()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
-  create(@Body() createCategoryDto: CreateCategoryDto) {
-    return this.categoriesService.create(createCategoryDto);
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER)
+  create(@Body() createCategoryDto: CreateCategoryDto, @Request() req) {
+    return this.categoriesService.create(createCategoryDto, req.user);
   }
 
   @Get()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF)
-  findAll() {
-    return this.categoriesService.findAll();
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER, UserRole.STAFF)
+  findAll(@Request() req) {
+    return this.categoriesService.findAll(req.user);
   }
 
   @Get(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF)
-  findOne(@Param('id') id: string) {
-    return this.categoriesService.findById(id);
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER, UserRole.STAFF)
+  findOne(@Param('id') id: string, @Request() req) {
+    return this.categoriesService.findById(id, req.user);
   }
 
   @Patch(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
-  update(@Param('id') id: string, @Body() updateCategoryDto: UpdateCategoryDto) {
-    return this.categoriesService.update(id, updateCategoryDto);
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER)
+  update(@Param('id') id: string, @Body() updateCategoryDto: UpdateCategoryDto, @Request() req) {
+    return this.categoriesService.update(id, updateCategoryDto, req.user);
   }
 
   @Delete(':id')
-  @Roles(UserRole.SUPER_ADMIN)
-  remove(@Param('id') id: string) {
-    return this.categoriesService.remove(id);
+  @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER)
+  remove(@Param('id') id: string, @Request() req) {
+    return this.categoriesService.remove(id, req.user);
   }
 }

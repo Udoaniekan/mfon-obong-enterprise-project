@@ -79,7 +79,7 @@ export class TransactionsService {
       paymentMethod: createTransactionDto.paymentMethod,
       notes: createTransactionDto.notes,
       status: amountPaid >= total ? 'COMPLETED' : 'PENDING',
-      branch: createTransactionDto.branch,
+      branchId: createTransactionDto.branchId,
     });
 
     // Update client balance

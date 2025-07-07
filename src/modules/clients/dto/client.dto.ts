@@ -7,6 +7,7 @@ import {
   Min,
   IsEnum,
   IsDate,
+  IsMongoId,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -30,14 +31,36 @@ export class CreateClientDto {
   @IsOptional()
   @IsNumber()
   balance?: number;
+
+  @IsNotEmpty()
+  @IsMongoId()
+  branchId: string;
 }
 
-export class UpdateClientDto extends CreateClientDto {
+export class UpdateClientDto {
   @IsOptional()
-  name: string;
+  @IsString()
+  name?: string;
 
   @IsOptional()
-  phone: string;
+  @IsString()
+  phone?: string;
+
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @IsOptional()
+  @IsNumber()
+  balance?: number;
+
+  @IsOptional()
+  @IsMongoId()
+  branchId?: string;
 }
 
 export class AddTransactionDto {

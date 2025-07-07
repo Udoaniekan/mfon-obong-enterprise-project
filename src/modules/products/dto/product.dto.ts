@@ -20,6 +20,7 @@ export class CreateProductDto {
   @IsNotEmpty()
   @IsString()
   unit: string;
+  
   @IsNotEmpty()
   @IsNumber()
   @Min(0)
@@ -34,12 +35,17 @@ export class CreateProductDto {
   @IsNumber()
   @Min(0)
   minStockLevel: number;
+
+  @IsNotEmpty()
+  @IsMongoId()
+  branchId: string;
 }
 
 export class UpdateProductDto {
   @IsOptional()
   @IsString()
   name?: string;
+  
   @IsOptional()
   @IsMongoId()
   categoryId?: string;
@@ -47,6 +53,7 @@ export class UpdateProductDto {
   @IsOptional()
   @IsString()
   unit?: string;
+  
   @IsOptional()
   @IsNumber()
   @Min(0)
@@ -63,7 +70,8 @@ export class UpdateProductDto {
   minStockLevel?: number;
 
   @IsOptional()
-  isActive?: boolean;
+  @IsMongoId()
+  branchId?: string;
 }
 
 export enum StockOperation {

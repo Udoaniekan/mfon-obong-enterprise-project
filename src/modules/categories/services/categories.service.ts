@@ -1,8 +1,10 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Category, CategoryDocument } from '../schemas/category.schema';
 import { CreateCategoryDto, UpdateCategoryDto } from '../dto/category.dto';
+import { UserDocument } from '../../users/schemas/user.schema';
+import { UserRole } from '../../../common/enums';
 
 @Injectable()
 export class CategoriesService {
@@ -10,23 +12,38 @@ export class CategoriesService {
     @InjectModel(Category.name) private categoryModel: Model<CategoryDocument>,
   ) {}
 
-  async create(createCategoryDto: CreateCategoryDto): Promise<CategoryDocument> {
+  async create(createCategoryDto: CreateCategoryDto, currentUser?: UserDocument): Promise<CategoryDocument> {
+    // Use current user's branchId if not provided by SUPER_ADMIN or MAINTAINER
+    let branchId = createCategoryDto.branchId;
+    if (!branchId || (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role))) {
+      branchId = currentUser?.branchId?.toString();
+    }
+
     try {
-      const category = new this.categoryModel(createCategoryDto);
+      const category = new this.categoryModel({
+        ...createCategoryDto,
+        branchId: new Types.ObjectId(branchId),
+      });
       return await category.save();
     } catch (error) {
       if (error.code === 11000) {
-        throw new ConflictException('Category already exists');
+        throw new ConflictException('Category already exists in this branch');
       }
       throw error;
     }
   }
 
-  async findAll(includeInactive = false): Promise<CategoryDocument[]> {
-    const query = includeInactive ? {} : { isActive: true };
-    return this.categoryModel.find(query).exec();
+  async findAll(currentUser?: UserDocument, includeInactive = false): Promise<CategoryDocument[]> {
+    let filter: any = includeInactive ? {} : { isActive: true };
+    
+    // Only SUPER_ADMIN and MAINTAINER can see all categories
+    if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
+      filter.branchId = currentUser.branchId;
+    }
+
+    return this.categoryModel.find(filter).populate('branchId', 'name').exec();
   }
-  async findById(id: string): Promise<CategoryDocument> {
+  async findById(id: string, currentUser?: UserDocument): Promise<CategoryDocument> {
     try {
       // Check if we've received a stringified object instead of a simple ID
       if (id.includes('ObjectId') && id.includes('_id')) {
@@ -38,7 +55,14 @@ export class CategoriesService {
         }
       }
       
-      const category = await this.categoryModel.findById(id);
+      let filter: any = { _id: id };
+      
+      // Only SUPER_ADMIN and MAINTAINER can access categories from other branches
+      if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
+        filter.branchId = currentUser.branchId;
+      }
+      
+      const category = await this.categoryModel.findOne(filter).populate('branchId', 'name');
       
       if (!category) {
         throw new NotFoundException('Category not found');
@@ -50,32 +74,48 @@ export class CategoriesService {
     }
   }
 
-  async findByName(name: string): Promise<CategoryDocument | null> {
-    return this.categoryModel.findOne({ name }).exec();
+  async findByName(name: string, currentUser?: UserDocument): Promise<CategoryDocument | null> {
+    let filter: any = { name };
+    
+    // Only SUPER_ADMIN and MAINTAINER can search across all branches
+    if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
+      filter.branchId = currentUser.branchId;
+    }
+
+    return this.categoryModel.findOne(filter).populate('branchId', 'name').exec();
   }
 
-  async update(id: string, updateCategoryDto: UpdateCategoryDto): Promise<CategoryDocument> {
-    const category = await this.findById(id);
+  async update(id: string, updateCategoryDto: UpdateCategoryDto, currentUser?: UserDocument): Promise<CategoryDocument> {
+    const category = await this.findById(id, currentUser);
+    
+    // Handle branchId update for SUPER_ADMIN and MAINTAINER only
+    if (updateCategoryDto.branchId) {
+      if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
+        delete updateCategoryDto.branchId; // Remove branchId if user doesn't have permission
+      } else {
+        updateCategoryDto.branchId = new Types.ObjectId(updateCategoryDto.branchId) as any;
+      }
+    }
     
     try {
       Object.assign(category, updateCategoryDto);
       return await category.save();
     } catch (error) {
       if (error.code === 11000) {
-        throw new ConflictException('Category name already exists');
+        throw new ConflictException('Category name already exists in this branch');
       }
       throw error;
     }
   }
 
-  async remove(id: string): Promise<void> {
-    const category = await this.findById(id);
+  async remove(id: string, currentUser?: UserDocument): Promise<void> {
+    const category = await this.findById(id, currentUser);
     category.isActive = false;
     await category.save();
   }
 
-  async validateCategoryAndUnit(categoryId: string, unit: string): Promise<boolean> {
-    const category = await this.findById(categoryId);
+  async validateCategoryAndUnit(categoryId: string, unit: string, currentUser?: UserDocument): Promise<boolean> {
+    const category = await this.findById(categoryId, currentUser);
     return category.units.includes(unit);
   }
 }

@@ -52,8 +52,8 @@ export class CreateTransactionDto {
   @IsString()
   paymentMethod?: string;
 
-  @IsString()
-  branch: string;
+  @IsMongoId()
+  branchId: string;
 
   @IsOptional()
   @IsString()
@@ -86,6 +86,10 @@ export class UpdateTransactionDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @IsMongoId()
+  branchId?: string;
 }
 
 export class QueryTransactionsDto {
@@ -116,6 +120,6 @@ export class QueryTransactionsDto {
   isPickedUp?: boolean;
 
   @IsOptional()
-  @IsString()
-  branch?: string;
+  @IsMongoId()
+  branchId?: string;
 }

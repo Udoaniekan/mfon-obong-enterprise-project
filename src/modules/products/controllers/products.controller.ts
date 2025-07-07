@@ -7,6 +7,7 @@ import {
   Param,
   Delete,
   UseGuards,
+  Request,
 } from '@nestjs/common';
 import { ProductsService } from '../services/products.service';
 import {
@@ -27,60 +28,64 @@ export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
   @Post()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
-  async create(@Body() createProductDto: CreateProductDto): Promise<Product> {
-    return this.productsService.create(createProductDto);
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER)
+  async create(@Body() createProductDto: CreateProductDto, @Request() req): Promise<Product> {
+    return this.productsService.create(createProductDto, req.user);
   }
 
   @Get()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF)
-  async findAll(): Promise<Product[]> {
-    return this.productsService.findAll();
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER, UserRole.STAFF)
+  async findAll(@Request() req): Promise<Product[]> {
+    return this.productsService.findAll(req.user);
   }
 
   @Get('low-stock')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
-  async getLowStockProducts(): Promise<Product[]> {
-    return this.productsService.getLowStockProducts();
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER)
+  async getLowStockProducts(@Request() req): Promise<Product[]> {
+    return this.productsService.getLowStockProducts(req.user);
   }
 
   @Get(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF)
-  async findOne(@Param('id') id: string): Promise<Product> {
-    return this.productsService.findById(id);
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER, UserRole.STAFF)
+  async findOne(@Param('id') id: string, @Request() req): Promise<Product> {
+    return this.productsService.findById(id, req.user);
   }
 
   @Get(':id/category')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF)
-  async findByCategory(@Param('id') id: string): Promise<ProductDocument[]> {
-    return this.productsService.findByCategory(id);
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER, UserRole.STAFF)
+  async findByCategory(@Param('id') id: string, @Request() req): Promise<ProductDocument[]> {
+    return this.productsService.findByCategory(id, req.user);
   }
 
   @Patch(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)  async update(
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER)
+  async update(
     @Param('id') id: string,
     @Body() updateProductDto: UpdateProductDto,
+    @Request() req,
   ): Promise<Product> {
-    return this.productsService.update(id, updateProductDto);
+    return this.productsService.update(id, updateProductDto, req.user);
   }
+
   @Patch(':id/stock')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER)
   async updateStock(
     @Param('id') id: string,
     @Body() updateStockDto: UpdateStockDto,
+    @Request() req,
   ): Promise<Product> {
-    return this.productsService.updateStock(id, updateStockDto);
+    return this.productsService.updateStock(id, updateStockDto, req.user);
   }
 
   @Delete(':id')
-  @Roles(UserRole.SUPER_ADMIN)
-  async remove(@Param('id') id: string): Promise<void> {
-    return this.productsService.remove(id);
+  @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER)
+  async remove(@Param('id') id: string, @Request() req): Promise<void> {
+    return this.productsService.remove(id, req.user);
   }
 
   @Delete(':id/delete')
-  @Roles(UserRole.SUPER_ADMIN)
-  async hardRemove(@Param('id') id: string): Promise<void> {
-    return this.productsService.hardRemove(id);
+  @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER)
+  async hardRemove(@Param('id') id: string, @Request() req): Promise<void> {
+    return this.productsService.hardRemove(id, req.user);
   }
 }

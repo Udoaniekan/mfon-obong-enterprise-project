@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Schema as MongooseSchema } from 'mongoose';
+import { Document, Schema as MongooseSchema, Types } from 'mongoose';
 import { Client } from '../../clients/schemas/client.schema';
 import { User } from '../../users/schemas/user.schema';
 export type TransactionDocument = Transaction & Document;
@@ -69,8 +69,8 @@ export class Transaction {
   @Prop()
   pickupDate?: Date;
 
-  @Prop({ required: true })
-  branch: string;
+  @Prop({ required: true, type: Types.ObjectId, ref: 'Branch' })
+  branchId: Types.ObjectId;
 
   @Prop({ type: String, enum: ['PENDING', 'COMPLETED', 'CANCELLED'], default: 'PENDING' })
   status: string;

@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Schema as MongooseSchema } from 'mongoose';
+import { Document, Schema as MongooseSchema, Types } from 'mongoose';
 import { Category } from '../../categories/schemas/category.schema';
 
 export type ProductDocument = Product & Document;
@@ -29,6 +29,9 @@ export class Product {
 
   @Prop({ type: [{ price: Number, date: Date }] })
   priceHistory: { price: number; date: Date }[];
+
+  @Prop({ required: true, type: Types.ObjectId, ref: 'Branch' })
+  branchId: Types.ObjectId;
 }
 
 export const ProductSchema = SchemaFactory.createForClass(Product);

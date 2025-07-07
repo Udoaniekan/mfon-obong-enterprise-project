@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, IsArray, IsOptional, IsBoolean } from 'class-validator';
+import { IsNotEmpty, IsString, IsArray, IsOptional, IsBoolean, IsMongoId } from 'class-validator';
 
 export class CreateCategoryDto {
   @IsNotEmpty()
@@ -13,6 +13,10 @@ export class CreateCategoryDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @IsNotEmpty()
+  @IsMongoId()
+  branchId: string;
 }
 
 export class UpdateCategoryDto {
@@ -32,4 +36,8 @@ export class UpdateCategoryDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @IsOptional()
+  @IsMongoId()
+  branchId?: string;
 }

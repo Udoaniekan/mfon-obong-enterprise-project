@@ -13,7 +13,7 @@ import { ParseDatePipe } from 'src/common/pipes/parse-date.pipe';
 
 @Controller('reports')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+@Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER)
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 

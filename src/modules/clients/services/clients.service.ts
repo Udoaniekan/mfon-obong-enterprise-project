@@ -5,7 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Client, ClientDocument } from '../schemas/client.schema';
 import {
   CreateClientDto,
@@ -13,6 +13,8 @@ import {
   AddTransactionDto,
   QueryClientsDto,
 } from '../dto/client.dto';
+import { UserDocument } from '../../users/schemas/user.schema';
+import { UserRole } from '../../../common/enums';
 
 @Injectable()
 export class ClientsService {
@@ -20,16 +22,24 @@ export class ClientsService {
     @InjectModel(Client.name) private readonly clientModel: Model<ClientDocument>,
   ) {}
 
-  async create(createClientDto: CreateClientDto): Promise<Client> {
+  async create(createClientDto: CreateClientDto, currentUser?: UserDocument): Promise<Client> {
+    // Use current user's branchId if not provided by SUPER_ADMIN or MAINTAINER
+    let branchId = createClientDto.branchId;
+    if (!branchId || (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role))) {
+      branchId = currentUser?.branchId?.toString();
+    }
+
     const existingClient = await this.clientModel.findOne({
       phone: createClientDto.phone,
+      branchId: new Types.ObjectId(branchId),
     });
     if (existingClient) {
-      throw new ConflictException('Phone number already registered');
+      throw new ConflictException('Phone number already registered in this branch');
     }
 
     const client = new this.clientModel({
       ...createClientDto,
+      branchId: new Types.ObjectId(branchId),
       isRegistered: true,
       transactions: [],
     });
@@ -37,8 +47,13 @@ export class ClientsService {
     return client.save();
   }
 
-  async findAll(query: QueryClientsDto): Promise<Client[]> {
+  async findAll(query: QueryClientsDto, currentUser?: UserDocument): Promise<Client[]> {
     const filter: any = {};
+
+    // Only SUPER_ADMIN and MAINTAINER can see all clients
+    if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
+      filter.branchId = currentUser.branchId;
+    }
 
     if (query.search) {
       filter.$or = [
@@ -65,49 +80,57 @@ export class ClientsService {
       }
     }
 
-    return this.clientModel.find(filter).sort({ lastTransactionDate: -1 }).exec();
+    return this.clientModel.find(filter).populate('branchId', 'name').sort({ lastTransactionDate: -1 }).exec();
   }
 
-  async findById(id: string): Promise<Client> {
-    const client = await this.clientModel.findById(id);
+  async findById(id: string, currentUser?: UserDocument): Promise<ClientDocument> {
+    let filter: any = { _id: id };
+    
+    // Only SUPER_ADMIN and MAINTAINER can access clients from other branches
+    if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
+      filter.branchId = currentUser.branchId;
+    }
+
+    const client = await this.clientModel.findOne(filter).populate('branchId', 'name');
     if (!client) {
       throw new NotFoundException('Client not found');
     }
     return client;
   }
 
-  async update(id: string, updateClientDto: UpdateClientDto): Promise<Client> {
+  async update(id: string, updateClientDto: UpdateClientDto, currentUser?: UserDocument): Promise<ClientDocument> {
+    const client = await this.findById(id, currentUser);
+
     if (updateClientDto.phone) {
       const existingClient = await this.clientModel.findOne({
         phone: updateClientDto.phone,
         _id: { $ne: id },
+        branchId: client.branchId,
       });
       if (existingClient) {
-        throw new ConflictException('Phone number already registered');
+        throw new ConflictException('Phone number already registered in this branch');
       }
     }
 
-    const client = await this.clientModel.findByIdAndUpdate(
-      id,
-      updateClientDto,
-      { new: true },
-    );
-
-    if (!client) {
-      throw new NotFoundException('Client not found');
+    // Handle branchId update for SUPER_ADMIN and MAINTAINER only
+    if (updateClientDto.branchId) {
+      if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
+        delete updateClientDto.branchId; // Remove branchId if user doesn't have permission
+      } else {
+        updateClientDto.branchId = new Types.ObjectId(updateClientDto.branchId) as any;
+      }
     }
 
-    return client;
+    Object.assign(client, updateClientDto);
+    return await client.save();
   }
 
   async addTransaction(
     id: string,
     transactionDto: AddTransactionDto,
-  ): Promise<Client> {
-    const client = await this.clientModel.findById(id);
-    if (!client) {
-      throw new NotFoundException('Client not found');
-    }
+    currentUser?: UserDocument,
+  ): Promise<ClientDocument> {
+    const client = await this.findById(id, currentUser);
 
     const transaction = {
       ...transactionDto,
@@ -132,11 +155,18 @@ export class ClientsService {
     client.transactions.push(transaction);
     client.lastTransactionDate = transaction.date;
 
-    return client.save();
+    return await client.save();
   }
 
-  async remove(id: string): Promise<void> {
-    const result = await this.clientModel.findByIdAndDelete(id);
+  async remove(id: string, currentUser?: UserDocument): Promise<void> {
+    let filter: any = { _id: id };
+    
+    // Only SUPER_ADMIN and MAINTAINER can delete clients from other branches
+    if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
+      filter.branchId = currentUser.branchId;
+    }
+
+    const result = await this.clientModel.findOneAndDelete(filter);
     if (!result) {
       throw new NotFoundException('Client not found');
     }
@@ -146,11 +176,9 @@ export class ClientsService {
     id: string,
     startDate?: Date,
     endDate?: Date,
+    currentUser?: UserDocument,
   ): Promise<any> {
-    const client = await this.clientModel.findById(id);
-    if (!client) {
-      throw new NotFoundException('Client not found');
-    }
+    const client = await this.findById(id, currentUser);
 
     let transactions = client.transactions;
 
@@ -188,21 +216,30 @@ export class ClientsService {
     return summary;
   }
 
-  async findDebtors(minAmount: number = 0): Promise<Client[]> {
+  async findDebtors(minAmount: number = 0, currentUser?: UserDocument): Promise<Client[]> {
+    const filter: any = {
+      balance: { $lt: -minAmount },
+    };
+
+    // Only SUPER_ADMIN and MAINTAINER can see all debtors
+    if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
+      filter.branchId = currentUser.branchId;
+    }
+
     return this.clientModel
-      .find({
-        balance: { $lt: -minAmount },
-      })
+      .find(filter)
+      .populate('branchId', 'name')
       .sort({ balance: 1 })
       .exec();
   }
 
-  async createWalkInClient(): Promise<Client> {
+  async createWalkInClient(currentUser?: UserDocument): Promise<Client> {
     const walkInClient = new this.clientModel({
       name: 'Walk-in Customer',
       phone: `WALK-IN-${Date.now()}`,
       isRegistered: false,
       balance: 0,
+      branchId: currentUser?.branchId,
     });
 
     return walkInClient.save();

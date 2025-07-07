@@ -19,7 +19,8 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "seed": "ts-node -r tsconfig-paths/register src/cli.ts",    
-    "seed:users": "npm run seed -- seed:users",
+    "seed:superadmin": "npm run seed -- seed:superadmin",
+    "seed:maintainer": "npm run seed -- seed:maintainer",
     "seed:categories": "npm run seed -- seed:categories"
   },
   "dependencies": {
