@@ -31,10 +31,6 @@ export class CreateClientDto {
   @IsOptional()
   @IsNumber()
   balance?: number;
-
-  @IsNotEmpty()
-  @IsMongoId()
-  branchId: string;
 }
 
 export class UpdateClientDto {
@@ -57,10 +53,6 @@ export class UpdateClientDto {
   @IsOptional()
   @IsNumber()
   balance?: number;
-
-  @IsOptional()
-  @IsMongoId()
-  branchId?: string;
 }
 
 export class AddTransactionDto {

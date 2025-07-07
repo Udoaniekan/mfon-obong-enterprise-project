@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+import { Document } from 'mongoose';
 
 export type ClientDocument = Client & Document;
 
@@ -43,9 +43,6 @@ export class Client {
 
   @Prop({ default: false })
   isRegistered: boolean;
-
-  @Prop({ required: true, type: Types.ObjectId, ref: 'Branch' })
-  branchId: Types.ObjectId;
 }
 
 export const ClientSchema = SchemaFactory.createForClass(Client);

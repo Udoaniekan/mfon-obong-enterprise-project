@@ -5,7 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model } from 'mongoose';
 import { Client, ClientDocument } from '../schemas/client.schema';
 import {
   CreateClientDto,
@@ -23,53 +23,34 @@ export class ClientsService {
   ) {}
 
   async create(createClientDto: CreateClientDto, currentUser?: UserDocument): Promise<Client> {
-    // Use current user's branchId if not provided by SUPER_ADMIN or MAINTAINER
-    let branchId = createClientDto.branchId;
-    if (!branchId || (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role))) {
-      branchId = currentUser?.branchId?.toString();
-    }
-
     const existingClient = await this.clientModel.findOne({
       phone: createClientDto.phone,
-      branchId: new Types.ObjectId(branchId),
     });
     if (existingClient) {
-      throw new ConflictException('Phone number already registered in this branch');
+      throw new ConflictException('Phone number already registered');
     }
-
     const client = new this.clientModel({
       ...createClientDto,
-      branchId: new Types.ObjectId(branchId),
       isRegistered: true,
       transactions: [],
     });
-
     return client.save();
   }
 
   async findAll(query: QueryClientsDto, currentUser?: UserDocument): Promise<Client[]> {
     const filter: any = {};
-
-    // Only SUPER_ADMIN and MAINTAINER can see all clients
-    if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
-      filter.branchId = currentUser.branchId;
-    }
-
     if (query.search) {
       filter.$or = [
         { name: new RegExp(query.search, 'i') },
         { phone: new RegExp(query.search, 'i') },
       ];
     }
-
     if (query.minBalance !== undefined) {
       filter.balance = { $gte: query.minBalance };
     }
-
     if (query.maxBalance !== undefined) {
       filter.balance = { ...filter.balance, $lte: query.maxBalance };
     }
-
     if (query.startDate || query.endDate) {
       filter.lastTransactionDate = {};
       if (query.startDate) {
@@ -79,19 +60,11 @@ export class ClientsService {
         filter.lastTransactionDate.$lte = query.endDate;
       }
     }
-
-    return this.clientModel.find(filter).populate('branchId', 'name').sort({ lastTransactionDate: -1 }).exec();
+    return this.clientModel.find(filter).sort({ lastTransactionDate: -1 }).exec();
   }
 
   async findById(id: string, currentUser?: UserDocument): Promise<ClientDocument> {
-    let filter: any = { _id: id };
-    
-    // Only SUPER_ADMIN and MAINTAINER can access clients from other branches
-    if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
-      filter.branchId = currentUser.branchId;
-    }
-
-    const client = await this.clientModel.findOne(filter).populate('branchId', 'name');
+    const client = await this.clientModel.findById(id);
     if (!client) {
       throw new NotFoundException('Client not found');
     }
@@ -100,27 +73,15 @@ export class ClientsService {
 
   async update(id: string, updateClientDto: UpdateClientDto, currentUser?: UserDocument): Promise<ClientDocument> {
     const client = await this.findById(id, currentUser);
-
     if (updateClientDto.phone) {
       const existingClient = await this.clientModel.findOne({
         phone: updateClientDto.phone,
         _id: { $ne: id },
-        branchId: client.branchId,
       });
       if (existingClient) {
-        throw new ConflictException('Phone number already registered in this branch');
+        throw new ConflictException('Phone number already registered');
       }
     }
-
-    // Handle branchId update for SUPER_ADMIN and MAINTAINER only
-    if (updateClientDto.branchId) {
-      if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
-        delete updateClientDto.branchId; // Remove branchId if user doesn't have permission
-      } else {
-        updateClientDto.branchId = new Types.ObjectId(updateClientDto.branchId) as any;
-      }
-    }
-
     Object.assign(client, updateClientDto);
     return await client.save();
   }
@@ -131,42 +92,30 @@ export class ClientsService {
     currentUser?: UserDocument,
   ): Promise<ClientDocument> {
     const client = await this.findById(id, currentUser);
-
     const transaction = {
       ...transactionDto,
       date: transactionDto.date || new Date(),
       reference: transactionDto.reference || `TXN${Date.now()}`,
     };
-
-    // Update client balance based on transaction type
     switch (transaction.type) {
       case 'DEPOSIT':
         client.balance += transaction.amount;
         break;
       case 'PURCHASE':
       case 'PICKUP':
-        if (client.balance - transaction.amount < -100000) { // Configurable credit limit
+        if (client.balance - transaction.amount < -100000) {
           throw new BadRequestException('Insufficient balance/credit limit exceeded');
         }
         client.balance -= transaction.amount;
         break;
     }
-
     client.transactions.push(transaction);
     client.lastTransactionDate = transaction.date;
-
     return await client.save();
   }
 
   async remove(id: string, currentUser?: UserDocument): Promise<void> {
-    let filter: any = { _id: id };
-    
-    // Only SUPER_ADMIN and MAINTAINER can delete clients from other branches
-    if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
-      filter.branchId = currentUser.branchId;
-    }
-
-    const result = await this.clientModel.findOneAndDelete(filter);
+    const result = await this.clientModel.findByIdAndDelete(id);
     if (!result) {
       throw new NotFoundException('Client not found');
     }
@@ -179,9 +128,7 @@ export class ClientsService {
     currentUser?: UserDocument,
   ): Promise<any> {
     const client = await this.findById(id, currentUser);
-
     let transactions = client.transactions;
-
     if (startDate || endDate) {
       transactions = transactions.filter((t) => {
         const transDate = new Date(t.date);
@@ -190,7 +137,6 @@ export class ClientsService {
         return true;
       });
     }
-
     const summary = {
       totalDeposits: 0,
       totalPurchases: 0,
@@ -198,7 +144,6 @@ export class ClientsService {
       currentBalance: client.balance,
       transactions: transactions,
     };
-
     transactions.forEach((t) => {
       switch (t.type) {
         case 'DEPOSIT':
@@ -212,7 +157,6 @@ export class ClientsService {
           break;
       }
     });
-
     return summary;
   }
 
@@ -220,15 +164,8 @@ export class ClientsService {
     const filter: any = {
       balance: { $lt: -minAmount },
     };
-
-    // Only SUPER_ADMIN and MAINTAINER can see all debtors
-    if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
-      filter.branchId = currentUser.branchId;
-    }
-
     return this.clientModel
       .find(filter)
-      .populate('branchId', 'name')
       .sort({ balance: 1 })
       .exec();
   }
@@ -239,9 +176,7 @@ export class ClientsService {
       phone: `WALK-IN-${Date.now()}`,
       isRegistered: false,
       balance: 0,
-      branchId: currentUser?.branchId,
     });
-
     return walkInClient.save();
   }
 }
