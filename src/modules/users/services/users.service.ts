@@ -103,4 +103,17 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
   }
+
+  async updatePassword(userId: string, previousPassword: string, newPassword: string): Promise<void> {
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    const isMatch = await bcrypt.compare(previousPassword, user.password);
+    if (!isMatch) {
+      throw new ConflictException('Wrong password');
+    }
+    user.password = await bcrypt.hash(newPassword, 10);
+    await user.save();
+  }
 }

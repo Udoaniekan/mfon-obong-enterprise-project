@@ -55,4 +55,26 @@ export class UsersController {
   async remove(@Param('id') id: string, @Request() req): Promise<void> {
     return this.usersService.remove(id, req.user);
   }
+
+  @Patch(':id/update-password')
+  async updatePassword(
+    @Param('id') id: string,
+    @Body() body: { previousPassword: string; newPassword: string },
+    @Request() req,
+  ): Promise<{ message: string }> {
+    // Only allow users to update their own password or SUPER_ADMIN/MAINTAINER
+    if (
+      req.user.role !== UserRole.SUPER_ADMIN &&
+      req.user.role !== UserRole.MAINTAINER &&
+      req.user.userId !== id
+    ) {
+      throw new Error('Forbidden');
+    }
+    await this.usersService.updatePassword(
+      id,
+      body.previousPassword,
+      body.newPassword,
+    );
+    return { message: 'Password updated successfully' };
+  }
 }
