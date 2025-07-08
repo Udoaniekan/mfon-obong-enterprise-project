@@ -32,6 +32,20 @@ export class User {
 
   @Prop({ required: true, type: Types.ObjectId, ref: 'Branch' })
   branchId: Types.ObjectId;
+
+  @Prop()
+  profilePicture?: string;
+
+  @Prop({ type: Object })
+  profilePictureMeta?: {
+    public_id?: string;
+    format?: string;
+    resource_type?: string;
+    width?: number;
+    height?: number;
+    bytes?: number;
+    [key: string]: any;
+  };
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

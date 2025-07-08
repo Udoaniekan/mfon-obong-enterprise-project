@@ -31,6 +31,21 @@ export class CreateUserDto {
   @IsNotEmpty()
   @IsMongoId()
   branchId: string;
+
+  @IsOptional()
+  @IsString()
+  profilePicture?: string;
+
+  @IsOptional()
+  profilePictureMeta?: {
+    public_id?: string;
+    format?: string;
+    resource_type?: string;
+    width?: number;
+    height?: number;
+    bytes?: number;
+    [key: string]: any;
+  };
 }
 
 export class UpdateUserDto {
@@ -62,4 +77,19 @@ export class UpdateUserDto {
   @IsOptional()
   @IsMongoId()
   branchId?: string;
+
+  @IsOptional()
+  @IsString()
+  profilePicture?: string;
+
+  @IsOptional()
+  profilePictureMeta?: {
+    public_id?: string;
+    format?: string;
+    resource_type?: string;
+    width?: number;
+    height?: number;
+    bytes?: number;
+    [key: string]: any;
+  };
 }

@@ -8,6 +8,8 @@ import {
   Delete,
   UseGuards,
   Request,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
 import { UsersService } from '../services/users.service';
 import { CreateUserDto, UpdateUserDto } from '../dto/user.dto';
@@ -16,11 +18,17 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { UserRole } from '../../../common/enums';
 import { Roles } from 'src/decorators/roles.decorators';
+import { UserProfilePictureService } from '../services/user-profile-picture.service';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { Express } from 'express';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly userProfilePictureService: UserProfilePictureService,
+  ) {}
 
   @Post()
   @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER)
@@ -76,5 +84,25 @@ export class UsersController {
       body.newPassword,
     );
     return { message: 'Password updated successfully' };
+  }
+
+  @Patch(':id/profile-picture')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadProfilePicture(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Request() req,
+  ): Promise<{ url: string }> {
+    const url = await this.userProfilePictureService.uploadProfilePicture(id, file, req.user);
+    return { url };
+  }
+
+  @Delete(':id/profile-picture')
+  async deleteProfilePicture(
+    @Param('id') id: string,
+    @Request() req,
+  ): Promise<{ message: string }> {
+    await this.userProfilePictureService.deleteProfilePicture(id, req.user);
+    return { message: 'Profile picture deleted' };
   }
 }
