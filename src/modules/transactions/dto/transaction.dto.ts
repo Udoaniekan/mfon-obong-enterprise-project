@@ -12,6 +12,19 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
+export class WalkInClientDto {
+  @IsString()
+  name: string;
+
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @IsOptional()
+  @IsString()
+  address?: string;
+}
+
 export class TransactionItemDto {
   @IsMongoId()
   productId: string;
@@ -30,8 +43,14 @@ export class TransactionItemDto {
 }
 
 export class CreateTransactionDto {
+  @IsOptional()
   @IsMongoId()
-  clientId: string;
+  clientId?: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => WalkInClientDto)
+  walkInClient?: WalkInClientDto;
 
   @IsArray()
   @ValidateNested({ each: true })

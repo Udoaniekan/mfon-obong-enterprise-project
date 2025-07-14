@@ -33,8 +33,19 @@ export class Transaction {
   @Prop({ required: true })
   invoiceNumber: string;
 
-  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Client', required: true })
-  clientId: MongooseSchema.Types.ObjectId;
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Client', required: false })
+  clientId?: MongooseSchema.Types.ObjectId;
+
+  @Prop({
+    type: Object,
+    required: false,
+    default: undefined,
+  })
+  walkInClient?: {
+    name: string;
+    phone?: string;
+    address?: string;
+  };
 
   @Prop()
   createdAt?: Date;

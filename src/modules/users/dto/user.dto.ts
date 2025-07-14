@@ -1,4 +1,4 @@
-import { IsEmail, IsEnum, IsNotEmpty, IsString, MinLength, IsMongoId, IsOptional } from 'class-validator';
+import { IsEmail, IsEnum, IsNotEmpty, IsString, MinLength, IsMongoId, IsOptional, Matches } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { UserRole } from '../../../common/enums';
 
@@ -13,7 +13,11 @@ export class CreateUserDto {
 
   @IsNotEmpty()
   @IsString()
-  @MinLength(6)
+  @MinLength(8)
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/, {
+    message:
+      'Password must be at least 8 characters long, include uppercase, lowercase, number, and special character',
+  })
   password: string; 
 
   @IsNotEmpty()
@@ -59,7 +63,11 @@ export class UpdateUserDto {
 
   @IsOptional()
   @IsString()
-  @MinLength(6)
+  @MinLength(8)
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/, {
+    message:
+      'Password must be at least 8 characters long, include uppercase, lowercase, number, and special character',
+  })
   password?: string;
 
   @IsOptional()

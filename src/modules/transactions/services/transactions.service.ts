@@ -28,9 +28,23 @@ export class TransactionsService {
   ) {}
 
   async create(createTransactionDto: CreateTransactionDto, userId: string): Promise<Transaction> {
-    // Validate client
-    const client = await this.clientsService.findById(createTransactionDto.clientId);
-    const clientId = (client as any)._id;
+    let clientId: Types.ObjectId | undefined = undefined;
+    let walkInClient: any = undefined;
+
+    if (createTransactionDto.clientId) {
+      // Registered client
+      const client = await this.clientsService.findById(createTransactionDto.clientId);
+      clientId = (client as any)._id;
+    } else if (createTransactionDto.walkInClient && createTransactionDto.walkInClient.name) {
+      // Walk-in client
+      walkInClient = {
+        name: createTransactionDto.walkInClient.name,
+        phone: createTransactionDto.walkInClient.phone,
+        address: createTransactionDto.walkInClient.address,
+      };
+    } else {
+      throw new BadRequestException('Either clientId or walkInClient details (name) must be provided');
+    }
 
     // Process items and calculate totals
     let subtotal = 0;
@@ -70,6 +84,7 @@ export class TransactionsService {
     const transaction = new this.transactionModel({
       invoiceNumber: await this.generateInvoiceNumber(),
       clientId,
+      walkInClient,
       userId: new Types.ObjectId(userId),
       items: processedItems,
       subtotal,
@@ -82,13 +97,15 @@ export class TransactionsService {
       branchId: createTransactionDto.branchId,
     });
 
-    // Update client balance
-    await this.clientsService.addTransaction(clientId.toString(), {
-      type: 'PURCHASE',
-      amount: total,
-      description: `Invoice #${transaction.invoiceNumber}`,
-      reference: transaction._id.toString(),
-    });
+    // Update client balance only for registered clients
+    if (clientId) {
+      await this.clientsService.addTransaction(clientId.toString(), {
+        type: 'PURCHASE',
+        amount: total,
+        description: `Invoice #${transaction.invoiceNumber}`,
+        reference: transaction._id.toString(),
+      });
+    }
 
     // Update stock levels
     await Promise.all(
