@@ -37,7 +37,7 @@ export class UsersController {
   }
 
   @Get()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER)
   async findAll(@Request() req): Promise<User[]> {
     return this.usersService.findAll(req.user);
   }
@@ -45,16 +45,26 @@ export class UsersController {
   @Get(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER)
   async findOne(@Param('id') id: string, @Request() req): Promise<User> {
-    return this.usersService.findById(id, req.user);
+    const user = await this.usersService.findById(id, req.user);
+    // Only allow ADMIN to get users from their own branch
+    if (req.user.role === UserRole.ADMIN && user.branchId.toString() !== req.user.branchId) {
+      throw new Error('Forbidden: ADMIN can only access users from their own branch');
+    }
+    return user;
   }
 
   @Patch(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER, UserRole.ADMIN)
   async update(
     @Param('id') id: string,
     @Body() updateUserDto: UpdateUserDto,
     @Request() req,
   ): Promise<User> {
+    const user = await this.usersService.findById(id, req.user);
+    // Only allow ADMIN to update users from their own branch
+    if (req.user.role === UserRole.ADMIN && user.branchId.toString() !== req.user.branchId) {
+      throw new Error('Forbidden: ADMIN can only update users from their own branch');
+    }
     return this.usersService.update(id, updateUserDto, req.user);
   }
 
@@ -92,6 +102,10 @@ export class UsersController {
     @UploadedFile() file: Express.Multer.File,
     @Request() req,
   ): Promise<{ url: string }> {
+    // Only allow MAINTAINER or the owner of the profile
+    if (req.user.role !== UserRole.MAINTAINER && req.user.userId !== id) {
+      throw new Error('Forbidden: Only MAINTAINER or the owner can upload profile picture');
+    }
     const url = await this.userProfilePictureService.uploadProfilePicture(id, file, req.user);
     return { url };
   }
@@ -101,6 +115,10 @@ export class UsersController {
     @Param('id') id: string,
     @Request() req,
   ): Promise<{ message: string }> {
+    // Only allow MAINTAINER or the owner of the profile
+    if (req.user.role !== UserRole.MAINTAINER && req.user.userId !== id) {
+      throw new Error('Forbidden: Only MAINTAINER or the owner can delete profile picture');
+    }
     await this.userProfilePictureService.deleteProfilePicture(id, req.user);
     return { message: 'Profile picture deleted' };
   }
