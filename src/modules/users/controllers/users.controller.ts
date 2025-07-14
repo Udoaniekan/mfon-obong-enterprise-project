@@ -70,9 +70,8 @@ export class UsersController {
     @Body() body: { previousPassword: string; newPassword: string },
     @Request() req,
   ): Promise<{ message: string }> {
-    // Only allow users to update their own password or SUPER_ADMIN/MAINTAINER
+    // Only allow users to update their own password or MAINTAINER
     if (
-      req.user.role !== UserRole.SUPER_ADMIN &&
       req.user.role !== UserRole.MAINTAINER &&
       req.user.userId !== id
     ) {

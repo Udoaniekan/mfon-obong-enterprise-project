@@ -29,7 +29,7 @@ export class BranchesController {
   }
 
   @Get()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER, UserRole.ADMIN, UserRole.STAFF)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER)
   async findAll(@Request() req): Promise<Branch[]> {
     return this.branchesService.findAll(req.user);
   }
