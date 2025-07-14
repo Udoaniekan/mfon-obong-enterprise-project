@@ -31,7 +31,7 @@ export class UsersController {
   ) {}
 
   @Post()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER)
+  @Roles(UserRole.MAINTAINER)
   async create(@Body() createUserDto: CreateUserDto): Promise<User> {
     return this.usersService.create(createUserDto);
   }
@@ -103,5 +103,15 @@ export class UsersController {
   ): Promise<{ message: string }> {
     await this.userProfilePictureService.deleteProfilePicture(id, req.user);
     return { message: 'Profile picture deleted' };
+  }
+
+  @Get('branch/:branchId')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER, UserRole.ADMIN)
+  async getUsersByBranch(@Param('branchId') branchId: string, @Request() req): Promise<User[]> {
+    // Only allow ADMIN to access their own branch
+    if (req.user.role === UserRole.ADMIN && req.user.branchId !== branchId) {
+      throw new Error('Forbidden: ADMIN can only access their own branch');
+    }
+    return this.usersService.getUsersByBranch(branchId);
   }
 }

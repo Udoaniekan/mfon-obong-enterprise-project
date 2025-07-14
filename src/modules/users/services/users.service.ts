@@ -116,4 +116,8 @@ export class UsersService {
     user.password = await bcrypt.hash(newPassword, 10);
     await user.save();
   }
+
+  async getUsersByBranch(branchId: string): Promise<User[]> {
+    return this.userModel.find({ branchId: new Types.ObjectId(branchId) }).select('-password').populate('branchId', 'name').exec();
+  }
 }
