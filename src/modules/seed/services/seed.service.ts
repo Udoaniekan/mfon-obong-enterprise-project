@@ -47,6 +47,8 @@ export class SeedService {
       address: 'Head Office, Sheelter Afrique',
       role: UserRole.SUPER_ADMIN,
       branchId: defaultBranch._id.toString(),
+      branch: 'Head Office',
+      branchAddress: 'Sheelter Afrique',
     };
 
     try {
@@ -171,6 +173,8 @@ export class SeedService {
       address: 'IT Department, Sheelter Afrique',
       role: UserRole.MAINTAINER,
       branchId: defaultBranch._id.toString(),
+      branch: 'Head Office',
+      branchAddress: 'Sheelter Afrique',
     };
 
     try {

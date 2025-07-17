@@ -33,6 +33,12 @@ export class User {
   @Prop({ required: true, type: Types.ObjectId, ref: 'Branch' })
   branchId: Types.ObjectId;
 
+  @Prop({ required: true })
+  branch: string;
+
+  @Prop()
+  branchAddress?: string;
+
   @Prop()
   profilePicture?: string;
 

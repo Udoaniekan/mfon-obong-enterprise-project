@@ -36,6 +36,14 @@ export class CreateUserDto {
   @IsMongoId()
   branchId: string;
 
+  @IsNotEmpty()
+  @IsString()
+  branch: string;
+
+  @IsOptional()
+  @IsString()
+  branchAddress?: string;
+
   @IsOptional()
   @IsString()
   profilePicture?: string;
@@ -53,6 +61,14 @@ export class CreateUserDto {
 }
 
 export class UpdateUserDto {
+  @IsOptional()
+  @IsString()
+  branch?: string;
+
+  @IsOptional()
+  @IsString()
+  branchAddress?: string;
+  
   @IsOptional()
   @IsString()
   name?: string;
