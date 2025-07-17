@@ -1,6 +1,11 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException, ForbiddenException, Inject, forwardRef } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../../users/services/users.service';
+import { Otp } from '../schemas/otp.schema';
+import { generateOTP, getOTPExpiry } from '../utils/otp.util';
+import { sendOTPEmail } from '../utils/mailer.util';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
@@ -8,7 +13,41 @@ export class AuthService {
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
+    @InjectModel(Otp.name) private readonly otpModel: Model<Otp>,
   ) {}
+  // MAINTAINER requests OTP to their email for password reset
+  async requestOtp(email: string, userId: string): Promise<{ message: string }> {
+    const user = await this.usersService.findByEmail(email);
+    if (!user) throw new BadRequestException('Maintainer email not found');
+    if (user.role !== 'MAINTAINER') throw new ForbiddenException('Only MAINTAINER can request OTP');
+
+    // Generate OTP and expiry
+    const otp = generateOTP();
+    const expiresAt = getOTPExpiry(10); // 10 minutes expiry
+
+    // Save OTP in DB (invalidate previous unused OTPs for this user/email)
+    await this.otpModel.updateMany({ email, userId, used: false }, { used: true });
+    await this.otpModel.create({ email, otp, userId, expiresAt });
+
+    // Send OTP email
+    await sendOTPEmail(email, otp);
+    return { message: 'OTP sent to MAINTAINER email' };
+  }
+
+  // MAINTAINER verifies OTP and resets user's password
+  async verifyOtpAndResetPassword(email: string, userId: string, otp: string, newPassword: string): Promise<{ message: string }> {
+    const otpDoc = await this.otpModel.findOne({ email, userId, otp, used: false });
+    if (!otpDoc) throw new BadRequestException('Invalid OTP');
+    if (otpDoc.expiresAt < new Date()) throw new BadRequestException('OTP expired');
+
+    // Mark OTP as used
+    otpDoc.used = true;
+    await otpDoc.save();
+
+    // Reset the user's password
+    await this.usersService.forgotPassword(userId, newPassword);
+    return { message: 'Password reset successfully' };
+  }
 
   async validateUser(email: string, password: string): Promise<any> {
     try {

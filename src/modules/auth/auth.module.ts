@@ -7,6 +7,8 @@ import { LocalStrategy } from './strategies/local.strategy';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { AuthController } from './controllers/auth.controller';
 import { AuthService } from './services/auth.service';
+import { MongooseModule } from '@nestjs/mongoose';
+import { Otp, OtpSchema } from './schemas/otp.schema';
 
 @Module({
   imports: [
@@ -17,11 +19,14 @@ import { AuthService } from './services/auth.service';
       useFactory: async (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_SECRET') || 'your-fallback-secret-key',
         signOptions: {
-          expiresIn: '24h', // Set a default expiration time
+          expiresIn: '24h',
         },
       }),
       inject: [ConfigService],
     }),
+    MongooseModule.forFeature([
+      { name: Otp.name, schema: OtpSchema },
+    ]),
   ],
   controllers: [AuthController],
   providers: [AuthService, LocalStrategy, JwtStrategy],

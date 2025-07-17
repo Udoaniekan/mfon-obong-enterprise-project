@@ -13,6 +13,9 @@ import {
 } from '@nestjs/common';
 import { UsersService } from '../services/users.service';
 import { CreateUserDto, UpdateUserDto } from '../dto/user.dto';
+import { ForgotPasswordDto } from '../dto/forgot-password.dto';
+// ...existing code...
+// ...existing code...
 import { User } from '../schemas/user.schema';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';

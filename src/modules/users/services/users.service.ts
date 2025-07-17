@@ -1,3 +1,5 @@
+// ...existing code...
+// ...existing code...
 import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -112,6 +114,15 @@ export class UsersService {
     const isMatch = await bcrypt.compare(previousPassword, user.password);
     if (!isMatch) {
       throw new ConflictException('Wrong password');
+    }
+    user.password = await bcrypt.hash(newPassword, 10);
+    await user.save();
+  }
+
+  async forgotPassword(userId: string, newPassword: string): Promise<void> {
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
     }
     user.password = await bcrypt.hash(newPassword, 10);
     await user.save();

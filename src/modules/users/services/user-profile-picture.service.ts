@@ -14,7 +14,7 @@ export class UserProfilePictureService {
   async uploadProfilePicture(userId: string, file: Express.Multer.File, currentUser: any): Promise<string> {
     try {
       if (file.mimetype !== 'image/jpeg' && file.mimetype !== 'image/pjpeg') {
-        throw new Error('Only JPEG images are allowed');
+        throw new ForbiddenException('Only JPEG images are allowed');
       }
       if (currentUser.userId !== userId && !['SUPER_ADMIN', 'MAINTAINER'].includes(currentUser.role)) {
         throw new ForbiddenException('You can only update your own profile picture');
@@ -51,7 +51,10 @@ export class UserProfilePictureService {
       return user.profilePicture;
     } catch (error) {
       console.error('Profile picture upload error:', error);
-      throw new Error(error.message || 'Profile picture upload failed');
+      if (error instanceof ForbiddenException || error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new ForbiddenException(error.message || 'Profile picture upload failed');
     }
   }
 
@@ -70,7 +73,10 @@ export class UserProfilePictureService {
       }
     } catch (error) {
       console.error('Profile picture delete error:', error);
-      throw new Error(error.message || 'Profile picture delete failed');
+      if (error instanceof ForbiddenException || error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new ForbiddenException(error.message || 'Profile picture delete failed');
     }
   }
 }
