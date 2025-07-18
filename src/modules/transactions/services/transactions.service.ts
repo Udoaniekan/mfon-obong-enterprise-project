@@ -78,7 +78,46 @@ export class TransactionsService {
     );
 
     const total = subtotal - (createTransactionDto.discount || 0);
-    const amountPaid = createTransactionDto.amountPaid || 0;
+    let amountPaid = createTransactionDto.amountPaid || 0;
+
+    // Handle registered client payment logic
+    let clientBalanceDeducted = 0;
+    let directPaymentDeducted = 0;
+    let debt = 0;
+    if (clientId) {
+      const client = await this.clientsService.findById(clientId.toString());
+      let remaining = total;
+      // Deduct from client balance first
+      if (client.balance > 0) {
+        if (client.balance >= remaining) {
+          clientBalanceDeducted = remaining;
+          client.balance -= remaining;
+          remaining = 0;
+        } else {
+          clientBalanceDeducted = client.balance;
+          remaining -= client.balance;
+          client.balance = 0;
+        }
+      }
+      // Deduct from direct payment (amountPaid)
+      if (amountPaid > 0 && remaining > 0) {
+        if (amountPaid >= remaining) {
+          directPaymentDeducted = remaining;
+          amountPaid -= remaining;
+          remaining = 0;
+        } else {
+          directPaymentDeducted = amountPaid;
+          remaining -= amountPaid;
+          amountPaid = 0;
+        }
+      }
+      // If still remaining, it's debt (negative balance)
+      if (remaining > 0) {
+        debt = remaining;
+        client.balance -= debt;
+      }
+      await client.save();
+    }
 
     // Create transaction
     const transaction = new this.transactionModel({
@@ -90,14 +129,15 @@ export class TransactionsService {
       subtotal,
       discount: createTransactionDto.discount || 0,
       total,
-      amountPaid,
+      amountPaid: clientBalanceDeducted + directPaymentDeducted,
       paymentMethod: createTransactionDto.paymentMethod,
       notes: createTransactionDto.notes,
-      status: amountPaid >= total ? 'COMPLETED' : 'PENDING',
+      status: (clientBalanceDeducted + directPaymentDeducted) >= total ? 'COMPLETED' : 'PENDING',
       branchId: createTransactionDto.branchId,
+      debt,
     });
 
-    // Update client balance only for registered clients
+    // Update client transaction history
     if (clientId) {
       await this.clientsService.addTransaction(clientId.toString(), {
         type: 'PURCHASE',
