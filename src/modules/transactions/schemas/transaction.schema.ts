@@ -83,6 +83,9 @@ export class Transaction {
   @Prop({ required: true, type: Types.ObjectId, ref: 'Branch' })
   branchId: Types.ObjectId;
 
+  @Prop({ type: String, default: null })
+  waybillNumber?: string;
+
   @Prop({ type: String, enum: ['PENDING', 'COMPLETED', 'CANCELLED'], default: 'PENDING' })
   status: string;
 

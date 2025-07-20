@@ -1,3 +1,4 @@
+
 import {
   Controller,
   Get,
@@ -63,5 +64,11 @@ export class TransactionsController {
     @Query('endDate') endDate: Date,
   ) {
     return this.transactionsService.generateReport(startDate, endDate);
+  }
+
+
+    @Patch(':id/waybill')
+  async assignWaybillNumber(@Param('id') id: string): Promise<any> {
+    return this.transactionsService.assignWaybillNumber(id);
   }
 }

@@ -1,3 +1,4 @@
+
 import {
   Injectable,
   NotFoundException,
@@ -78,46 +79,7 @@ export class TransactionsService {
     );
 
     const total = subtotal - (createTransactionDto.discount || 0);
-    let amountPaid = createTransactionDto.amountPaid || 0;
-
-    // Handle registered client payment logic
-    let clientBalanceDeducted = 0;
-    let directPaymentDeducted = 0;
-    let debt = 0;
-    if (clientId) {
-      const client = await this.clientsService.findById(clientId.toString());
-      let remaining = total;
-      // Deduct from client balance first
-      if (client.balance > 0) {
-        if (client.balance >= remaining) {
-          clientBalanceDeducted = remaining;
-          client.balance -= remaining;
-          remaining = 0;
-        } else {
-          clientBalanceDeducted = client.balance;
-          remaining -= client.balance;
-          client.balance = 0;
-        }
-      }
-      // Deduct from direct payment (amountPaid)
-      if (amountPaid > 0 && remaining > 0) {
-        if (amountPaid >= remaining) {
-          directPaymentDeducted = remaining;
-          amountPaid -= remaining;
-          remaining = 0;
-        } else {
-          directPaymentDeducted = amountPaid;
-          remaining -= amountPaid;
-          amountPaid = 0;
-        }
-      }
-      // If still remaining, it's debt (negative balance)
-      if (remaining > 0) {
-        debt = remaining;
-        client.balance -= debt;
-      }
-      await client.save();
-    }
+    const amountPaid = createTransactionDto.amountPaid || 0;
 
     // Create transaction
     const transaction = new this.transactionModel({
@@ -129,15 +91,14 @@ export class TransactionsService {
       subtotal,
       discount: createTransactionDto.discount || 0,
       total,
-      amountPaid: clientBalanceDeducted + directPaymentDeducted,
+      amountPaid,
       paymentMethod: createTransactionDto.paymentMethod,
       notes: createTransactionDto.notes,
-      status: (clientBalanceDeducted + directPaymentDeducted) >= total ? 'COMPLETED' : 'PENDING',
+      status: amountPaid >= total ? 'COMPLETED' : 'PENDING',
       branchId: createTransactionDto.branchId,
-      debt,
     });
 
-    // Update client transaction history
+    // Update client balance only for registered clients
     if (clientId) {
       await this.clientsService.addTransaction(clientId.toString(), {
         type: 'PURCHASE',
@@ -285,5 +246,17 @@ export class TransactionsService {
     });
 
     return report;
+  }
+
+
+    async assignWaybillNumber(id: string): Promise<Transaction> {
+    const transaction = await this.transactionModel.findById(id);
+    if (!transaction) throw new NotFoundException('Transaction not found');
+    // Auto-generate waybill number
+    const date = new Date();
+    const prefix = `WB${date.getFullYear()}${(date.getMonth()+1).toString().padStart(2,'0')}${date.getDate().toString().padStart(2,'0')}`;
+    const count = await this.transactionModel.countDocuments({ waybillNumber: { $regex: `^${prefix}` } });
+    transaction.waybillNumber = `${prefix}-${(count+1).toString().padStart(4,'0')}`;
+    return transaction.save();
   }
 }
