@@ -1,7 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema, Types } from 'mongoose';
-import { Client } from '../../clients/schemas/client.schema';
-import { User } from '../../users/schemas/user.schema';
 export type TransactionDocument = Transaction & Document;
 
 @Schema({ timestamps: true })
@@ -32,6 +30,9 @@ export class TransactionItem {
 export class Transaction {
   @Prop({ required: true })
   invoiceNumber: string;
+
+  @Prop({ type: String, enum: ['DEPOSIT', 'PURCHASE', 'PICKUP'], required: true })
+  type: string;
 
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Client', required: false })
   clientId?: MongooseSchema.Types.ObjectId;

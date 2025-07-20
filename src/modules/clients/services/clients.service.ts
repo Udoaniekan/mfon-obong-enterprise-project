@@ -103,9 +103,7 @@ export class ClientsService {
         break;
       case 'PURCHASE':
       case 'PICKUP':
-        if (client.balance - transaction.amount < -100000) {
-          throw new BadRequestException('Insufficient balance/credit limit exceeded');
-        }
+        // Allow negative balances for credit
         client.balance -= transaction.amount;
         break;
     }

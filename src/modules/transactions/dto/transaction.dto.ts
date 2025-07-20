@@ -9,6 +9,7 @@ import {
   IsDate,
   ValidateNested,
   Min,
+  IsNotEmpty,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -42,6 +43,14 @@ export class TransactionItemDto {
   discount?: number;
 }
 
+// ...existing code...
+
+export enum TransactionType {
+  DEPOSIT = 'DEPOSIT',
+  PURCHASE = 'PURCHASE',
+  PICKUP = 'PICKUP',
+}
+
 export class CreateTransactionDto {
   @IsOptional()
   @IsMongoId()
@@ -56,6 +65,10 @@ export class CreateTransactionDto {
   @ValidateNested({ each: true })
   @Type(() => TransactionItemDto)
   items: TransactionItemDto[];
+
+  @IsNotEmpty()
+  @IsEnum(TransactionType)
+  type: TransactionType;
 
   @IsOptional()
   @IsNumber()

@@ -82,6 +82,23 @@ export class TransactionsService {
     const amountPaid = createTransactionDto.amountPaid || 0;
 
     // Create transaction
+    let status = 'PENDING';
+    if (clientId) {
+      // Registered client
+      const type = createTransactionDto.type || 'PURCHASE';
+      if (type === 'PICKUP') {
+        status = 'COMPLETED';
+      } else if (type === 'PURCHASE') {
+        if (amountPaid !== total) {
+          throw new BadRequestException(`Full payment required for PURCHASE transactions. Amount to be paid: ${total}`);
+        }
+        status = 'COMPLETED';
+      }
+    } else {
+      // Walk-in client
+      status = amountPaid >= total ? 'COMPLETED' : 'PENDING';
+    }
+
     const transaction = new this.transactionModel({
       invoiceNumber: await this.generateInvoiceNumber(),
       clientId,
@@ -94,14 +111,15 @@ export class TransactionsService {
       amountPaid,
       paymentMethod: createTransactionDto.paymentMethod,
       notes: createTransactionDto.notes,
-      status: amountPaid >= total ? 'COMPLETED' : 'PENDING',
+      status,
       branchId: createTransactionDto.branchId,
     });
 
     // Update client balance only for registered clients
     if (clientId) {
+      const ledgerType = (createTransactionDto.type === 'PICKUP') ? 'PICKUP' : 'PURCHASE';
       await this.clientsService.addTransaction(clientId.toString(), {
-        type: 'PURCHASE',
+        type: ledgerType,
         amount: total,
         description: `Invoice #${transaction.invoiceNumber}`,
         reference: transaction._id.toString(),
