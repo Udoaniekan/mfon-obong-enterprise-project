@@ -101,9 +101,16 @@ export class ClientsService {
       case 'DEPOSIT':
         client.balance += transaction.amount;
         break;
-      case 'PURCHASE':
+      case 'PURCHASE': {
+        // For PURCHASE, use up any positive balance, the rest is paid in cash
+        const amountFromBalance = Math.min(client.balance, transaction.amount);
+        client.balance -= amountFromBalance;
+        // After this, balance should never go negative for PURCHASE
+        if (client.balance < 0) client.balance = 0;
+        break;
+      }
       case 'PICKUP':
-        // Allow negative balances for credit
+        // PICKUP can go negative
         client.balance -= transaction.amount;
         break;
     }
