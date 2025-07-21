@@ -89,8 +89,19 @@ export class TransactionsService {
       if (type === 'PICKUP') {
         status = 'COMPLETED';
       } else if (type === 'PURCHASE') {
-        if (amountPaid !== total) {
-          throw new BadRequestException(`Full payment required for PURCHASE transactions. Amount to be paid: ${total}`);
+        // Fetch client balance
+        const client = await this.clientsService.findById(createTransactionDto.clientId);
+        const clientBalance = client.balance || 0;
+        const requiredPayment = total - (clientBalance > 0 ? clientBalance : 0);
+        if (requiredPayment < 0) {
+          // Client has more than enough balance, no payment needed
+          if (amountPaid !== 0) {
+            throw new BadRequestException(`No payment required. Client already has enough balance.`);
+          }
+        } else {
+          if (amountPaid !== requiredPayment) {
+            throw new BadRequestException(`Insufficient payment. Client must pay exactly ${requiredPayment} to complete this purchase. Current balance: ${clientBalance}`);
+          }
         }
         status = 'COMPLETED';
       }
