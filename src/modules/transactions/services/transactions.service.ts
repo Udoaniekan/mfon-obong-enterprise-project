@@ -113,6 +113,7 @@ export class TransactionsService {
       notes: createTransactionDto.notes,
       status,
       branchId: createTransactionDto.branchId,
+      type: createTransactionDto.type,
     });
 
     // Update client balance only for registered clients
