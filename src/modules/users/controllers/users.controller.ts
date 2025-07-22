@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { UsersService } from '../services/users.service';
 import { CreateUserDto, UpdateUserDto } from '../dto/user.dto';
+import { BlockUserDto } from '../dto/block-user.dto';
 import { ForgotPasswordDto } from '../dto/forgot-password.dto';
 // ...existing code...
 // ...existing code...
@@ -32,6 +33,23 @@ export class UsersController {
     private readonly usersService: UsersService,
     private readonly userProfilePictureService: UserProfilePictureService,
   ) {}
+  @Patch(':id/block')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER)
+  async blockUser(
+    @Param('id') id: string,
+    @Body() blockUserDto: BlockUserDto,
+    @Request() req,
+  ): Promise<User> {
+    return this.usersService.blockUser(id, blockUserDto, req.user);
+  }
+  @Patch(':id/unblock')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER)
+  async unblockUser(
+    @Param('id') id: string,
+    @Request() req,
+  ): Promise<User> {
+    return this.usersService.unblockUser(id, req.user);
+  }
 
   @Post()
   @Roles(UserRole.MAINTAINER)

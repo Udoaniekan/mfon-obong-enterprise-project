@@ -15,6 +15,63 @@ export class UsersService {
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     private readonly systemActivityLogService: SystemActivityLogService,
   ) {}
+  async blockUser(id: string, blockUserDto: { reason?: string }, currentUser?: UserDocument): Promise<User> {
+    let filter: any = { _id: id };
+    // Only SUPER_ADMIN and MAINTAINER can block users from other branches
+    if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
+      filter.branchId = currentUser.branchId;
+    }
+    const user = await this.userModel.findOne(filter);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    user.isBlocked = true;
+    if (blockUserDto.reason) {
+      user.blockReason = blockUserDto.reason;
+    }
+    await user.save();
+    // Log user block activity
+    try {
+      await this.systemActivityLogService.createLog({
+        action: 'USER_BLOCKED',
+        details: `User blocked: ${user.name} (${user.email}) - Reason: ${blockUserDto.reason || 'N/A'}`,
+        performedBy: currentUser?.email || 'System',
+        role: currentUser?.role || 'ADMIN',
+        device: 'System',
+      });
+    } catch (logError) {
+      console.error('Failed to log user block:', logError);
+    }
+    return user;
+  }
+
+  async unblockUser(id: string, currentUser?: UserDocument): Promise<User> {
+    let filter: any = { _id: id };
+    // Only SUPER_ADMIN and MAINTAINER can unblock users from other branches
+    if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
+      filter.branchId = currentUser.branchId;
+    }
+    const user = await this.userModel.findOne(filter);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    user.isBlocked = false;
+    user.blockReason = undefined;
+    await user.save();
+    // Log user unblock activity
+    try {
+      await this.systemActivityLogService.createLog({
+        action: 'USER_UNBLOCKED',
+        details: `User unblocked: ${user.name} (${user.email})`,
+        performedBy: currentUser?.email || 'System',
+        role: currentUser?.role || 'ADMIN',
+        device: 'System',
+      });
+    } catch (logError) {
+      console.error('Failed to log user unblock:', logError);
+    }
+    return user;
+  }
   async create(createUserDto: CreateUserDto): Promise<User> {
     console.log('Creating user with data:', { ...createUserDto, password: '[REDACTED]' });
     const { email, password } = createUserDto;

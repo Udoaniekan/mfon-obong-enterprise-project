@@ -52,6 +52,10 @@ export class User {
     bytes?: number;
     [key: string]: any;
   };
+  @Prop({ default: false })
+  isBlocked?: boolean;
+  @Prop()
+  blockReason?: string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
