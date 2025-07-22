@@ -5,17 +5,34 @@ import { Branch, BranchDocument } from '../schemas/branch.schema';
 import { CreateBranchDto, UpdateBranchDto } from '../dto/branch.dto';
 import { UserDocument } from '../../users/schemas/user.schema';
 import { UserRole } from '../../../common/enums';
+import { SystemActivityLogService } from '../../system-activity-logs/services/system-activity-log.service';
 
 @Injectable()
 export class BranchesService {
   constructor(
     @InjectModel(Branch.name) private branchModel: Model<BranchDocument>,
+    private readonly systemActivityLogService: SystemActivityLogService,
   ) {}
 
   async create(createBranchDto: CreateBranchDto): Promise<BranchDocument> {
     try {
       const branch = new this.branchModel(createBranchDto);
-      return await branch.save();
+      const savedBranch = await branch.save();
+
+      // Log branch creation
+      try {
+        await this.systemActivityLogService.createLog({
+          action: 'BRANCH_CREATED',
+          details: `New branch created: ${savedBranch.name} at ${savedBranch.address}`,
+          performedBy: 'System',
+          role: 'SUPER_ADMIN',
+          device: 'System',
+        });
+      } catch (logError) {
+        console.error('Failed to log branch creation:', logError);
+      }
+
+      return savedBranch;
     } catch (error) {
       if (error.code === 11000) {
         throw new ConflictException('Branch name already exists');

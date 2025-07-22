@@ -7,11 +7,13 @@ import * as bcrypt from 'bcrypt';
 import { User, UserDocument } from '../schemas/user.schema';
 import { CreateUserDto, UpdateUserDto } from '../dto/user.dto';
 import { UserRole } from '../../../common/enums';
+import { SystemActivityLogService } from '../../system-activity-logs/services/system-activity-log.service';
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
+    private readonly systemActivityLogService: SystemActivityLogService,
   ) {}
   async create(createUserDto: CreateUserDto): Promise<User> {
     console.log('Creating user with data:', { ...createUserDto, password: '[REDACTED]' });
@@ -29,7 +31,22 @@ export class UsersService {
       branchId: new Types.ObjectId(createUserDto.branchId),
     });
 
-    return newUser.save();
+    const savedUser = await newUser.save();
+
+    // Log user creation activity
+    try {
+      await this.systemActivityLogService.createLog({
+        action: 'USER_CREATED',
+        details: `New user created: ${savedUser.name} (${savedUser.email}) with role ${savedUser.role}`,
+        performedBy: 'System', // Could be improved by passing the creator's ID
+        role: 'ADMIN', // Default role for user creation
+        device: 'System',
+      });
+    } catch (logError) {
+      console.error('Failed to log user creation:', logError);
+    }
+
+    return savedUser;
   }
   async findAll(currentUser?: UserDocument): Promise<User[]> {
     let filter = {};
@@ -89,6 +106,22 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
+    // Log user update activity
+    try {
+      const changes = Object.keys(updateUserDto).filter(key => key !== 'password');
+      const changeDetails = changes.length > 0 ? ` - Updated: ${changes.join(', ')}` : '';
+      
+      await this.systemActivityLogService.createLog({
+        action: 'USER_UPDATED',
+        details: `User updated: ${user.name} (${user.email})${changeDetails}`,
+        performedBy: currentUser?.email || 'System',
+        role: currentUser?.role || 'ADMIN',
+        device: 'System',
+      });
+    } catch (logError) {
+      console.error('Failed to log user update:', logError);
+    }
+
     return user;
   }
 
@@ -104,6 +137,19 @@ export class UsersService {
     if (!result) {
       throw new NotFoundException('User not found');
     }
+
+    // Log user deletion activity
+    try {
+      await this.systemActivityLogService.createLog({
+        action: 'USER_DELETED',
+        details: `User deleted: ${result.name} (${result.email}) - Role: ${result.role}`,
+        performedBy: currentUser?.email || 'System',
+        role: currentUser?.role || 'ADMIN',
+        device: 'System',
+      });
+    } catch (logError) {
+      console.error('Failed to log user deletion:', logError);
+    }
   }
 
   async updatePassword(userId: string, previousPassword: string, newPassword: string): Promise<void> {
@@ -117,6 +163,19 @@ export class UsersService {
     }
     user.password = await bcrypt.hash(newPassword, 10);
     await user.save();
+
+    // Log password update activity
+    try {
+      await this.systemActivityLogService.createLog({
+        action: 'PASSWORD_UPDATED',
+        details: `User changed password: ${user.name} (${user.email})`,
+        performedBy: user.email,
+        role: user.role,
+        device: 'System',
+      });
+    } catch (logError) {
+      console.error('Failed to log password update:', logError);
+    }
   }
 
   async forgotPassword(userId: string, newPassword: string): Promise<void> {
@@ -126,6 +185,19 @@ export class UsersService {
     }
     user.password = await bcrypt.hash(newPassword, 10);
     await user.save();
+
+    // Log password reset activity
+    try {
+      await this.systemActivityLogService.createLog({
+        action: 'PASSWORD_RESET',
+        details: `Password reset for user: ${user.name} (${user.email})`,
+        performedBy: 'MAINTAINER', // Since only maintainers can reset passwords
+        role: 'MAINTAINER',
+        device: 'System',
+      });
+    } catch (logError) {
+      console.error('Failed to log password reset:', logError);
+    }
   }
 
   async getUsersByBranch(branchId: string): Promise<User[]> {

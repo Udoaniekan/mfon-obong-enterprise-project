@@ -15,12 +15,14 @@ import {
 import { CategoriesService } from '../../categories/services/categories.service';
 import { UserDocument } from '../../users/schemas/user.schema';
 import { UserRole } from '../../../common/enums';
+import { SystemActivityLogService } from '../../system-activity-logs/services/system-activity-log.service';
 
 @Injectable()
 export class ProductsService {
   constructor(
     @InjectModel(Product.name) private productModel: Model<ProductDocument>,
     private readonly categoriesService: CategoriesService,
+    private readonly systemActivityLogService: SystemActivityLogService,
   ) {}
 
   async create(createProductDto: CreateProductDto, currentUser?: UserDocument): Promise<Product> {
@@ -55,7 +57,23 @@ export class ProductsService {
       priceHistory: [{ price: createProductDto.unitPrice, date: new Date() }],
     });
 
-    return product.save();
+    const savedProduct = await product.save();
+
+    // Log product creation activity
+    try {
+      const category = await this.categoriesService.findById(createProductDto.categoryId);
+      await this.systemActivityLogService.createLog({
+        action: 'PRODUCT_CREATED',
+        details: `Product created: ${savedProduct.name} (${savedProduct.unit}) in category ${category.name} - Price: ${savedProduct.unitPrice}`,
+        performedBy: currentUser?.email || 'System',
+        role: currentUser?.role || 'ADMIN',
+        device: 'System',
+      });
+    } catch (logError) {
+      console.error('Failed to log product creation:', logError);
+    }
+
+    return savedProduct;
   }
 
   async findAll(currentUser?: UserDocument, includeInactive = false): Promise<ProductDocument[]> {
@@ -125,7 +143,23 @@ export class ProductsService {
     }
 
     Object.assign(product, updateProductDto);
-    return product.save();
+    const savedProduct = await product.save();
+
+    // Log product update activity
+    try {
+      const changes = Object.keys(updateProductDto).join(', ');
+      await this.systemActivityLogService.createLog({
+        action: 'PRODUCT_UPDATED',
+        details: `Product updated: ${savedProduct.name} - Changes: ${changes}`,
+        performedBy: currentUser?.email || 'System',
+        role: currentUser?.role || 'ADMIN',
+        device: 'System',
+      });
+    } catch (logError) {
+      console.error('Failed to log product update:', logError);
+    }
+
+    return savedProduct;
   }    
   
   async updateStock(id: string, updateStockDto: UpdateStockDto, currentUser?: UserDocument): Promise<ProductDocument> {
@@ -166,17 +200,45 @@ export class ProductsService {
     ).exec();
     
     // Return the updated product with populated fields
-    return this.productModel
+    const updatedProduct = await this.productModel
       .findOne(filter)
       .populate('categoryId', 'name units')
       .populate('branchId', 'name')
       .exec();
+
+    // Log stock update activity
+    try {
+      await this.systemActivityLogService.createLog({
+        action: 'STOCK_UPDATED',
+        details: `Stock ${operation === StockOperation.ADD ? 'increased' : 'decreased'} for ${updatedProduct.name}: ${quantity} ${unit} (New stock: ${newStock})`,
+        performedBy: currentUser?.email || 'System',
+        role: currentUser?.role || 'STAFF',
+        device: 'System',
+      });
+    } catch (logError) {
+      console.error('Failed to log stock update:', logError);
+    }
+
+    return updatedProduct;
   }
 
   async remove(id: string, currentUser?: UserDocument): Promise<void> {
     const product = await this.findById(id, currentUser);
     product.isActive = false;
     await product.save();
+
+    // Log product deactivation activity
+    try {
+      await this.systemActivityLogService.createLog({
+        action: 'PRODUCT_DEACTIVATED',
+        details: `Product deactivated: ${product.name} (${product.unit})`,
+        performedBy: currentUser?.email || 'System',
+        role: currentUser?.role || 'ADMIN',
+        device: 'System',
+      });
+    } catch (logError) {
+      console.error('Failed to log product deactivation:', logError);
+    }
   }
 
   async hardRemove(id: string, currentUser?: UserDocument): Promise<void> {
@@ -190,6 +252,19 @@ export class ProductsService {
     const result = await this.productModel.findOneAndDelete(filter);
     if (!result) {
       throw new NotFoundException('Product not found');
+    }
+
+    // Log product hard deletion activity
+    try {
+      await this.systemActivityLogService.createLog({
+        action: 'PRODUCT_DELETED',
+        details: `Product permanently deleted: ${result.name} (${result.unit})`,
+        performedBy: currentUser?.email || 'System',
+        role: currentUser?.role || 'ADMIN',
+        device: 'System',
+      });
+    } catch (logError) {
+      console.error('Failed to log product deletion:', logError);
     }
   }
 

@@ -5,11 +5,13 @@ import { UsersService } from './services/users.service';
 import { UsersController } from './controllers/users.controller';
 import { UserProfilePictureService } from './services/user-profile-picture.service';
 import { CloudinaryModule } from './cloudinary.module';
+import { SystemActivityLogModule } from '../system-activity-logs/system-activity-log.module';
 
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: User.name, schema: UserSchema }],),
-    CloudinaryModule
+    CloudinaryModule,
+    SystemActivityLogModule
   ],
   providers: [UsersService, UserProfilePictureService],
   controllers: [UsersController],

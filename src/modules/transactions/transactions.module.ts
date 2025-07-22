@@ -5,6 +5,7 @@ import { TransactionsService } from './services/transactions.service';
 import { TransactionsController } from './controllers/transactions.controller';
 import { ProductsModule } from '../products/products.module';
 import { ClientsModule } from '../clients/clients.module';
+import { SystemActivityLogModule } from '../system-activity-logs/system-activity-log.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { ClientsModule } from '../clients/clients.module';
     ]),
     ProductsModule,
     ClientsModule,
+    SystemActivityLogModule,
   ],
   providers: [TransactionsService],
   controllers: [TransactionsController],

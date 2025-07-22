@@ -6,6 +6,8 @@ import { UsersService } from '../../users/services/users.service';
 import { Otp } from '../schemas/otp.schema';
 import { generateOTP, getOTPExpiry } from '../utils/otp.util';
 import { sendOTPEmail } from '../utils/mailer.util';
+import { SystemActivityLogService } from '../../system-activity-logs/services/system-activity-log.service';
+import { extractDeviceInfo } from '../../system-activity-logs/utils/device-extractor.util';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
@@ -14,6 +16,7 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     @InjectModel(Otp.name) private readonly otpModel: Model<Otp>,
+    private readonly systemActivityLogService: SystemActivityLogService,
   ) {}
   // MAINTAINER requests OTP to their email for password reset
   async requestOtp(email: string, userId: string): Promise<{ message: string }> {
@@ -31,6 +34,20 @@ export class AuthService {
 
     // Send OTP email
     await sendOTPEmail(email, otp);
+
+    // Log OTP request activity
+    try {
+      await this.systemActivityLogService.createLog({
+        action: 'OTP_REQUESTED',
+        details: `OTP requested for password reset: ${email}`,
+        performedBy: email,
+        role: 'MAINTAINER',
+        device: 'System',
+      });
+    } catch (logError) {
+      console.error('Failed to log OTP request:', logError);
+    }
+
     return { message: 'OTP sent to MAINTAINER email' };
   }
 
@@ -46,6 +63,20 @@ export class AuthService {
 
     // Reset the user's password
     await this.usersService.forgotPassword(userId, newPassword);
+
+    // Log OTP verification and password reset
+    try {
+      await this.systemActivityLogService.createLog({
+        action: 'OTP_VERIFIED',
+        details: `OTP verified and password reset completed for: ${email}`,
+        performedBy: email,
+        role: 'MAINTAINER',
+        device: 'System',
+      });
+    } catch (logError) {
+      console.error('Failed to log OTP verification:', logError);
+    }
+
     return { message: 'Password reset successfully' };
   }
 
@@ -76,7 +107,7 @@ export class AuthService {
       throw new UnauthorizedException(error.message);
     }
   }  
-  async login(user: any) {
+  async login(user: any, userAgent?: string) {
     try {
       console.log('Creating JWT payload for user:', user.email);
       const payload = { 
@@ -90,6 +121,20 @@ export class AuthService {
       
       const access_token = this.jwtService.sign(payload, { expiresIn: '24h' });
       console.log('JWT Token generated successfully');
+      
+      // Log successful login activity
+      try {
+        await this.systemActivityLogService.createLog({
+          action: 'LOGIN',
+          details: `User logged in successfully`,
+          performedBy: user.email || user.name,
+          role: user.role,
+          device: extractDeviceInfo(userAgent || ''),
+        });
+      } catch (logError) {
+        console.error('Failed to log login activity:', logError);
+        // Don't fail login if logging fails
+      }
       
       // Direct format, not nested inside data property
       return {

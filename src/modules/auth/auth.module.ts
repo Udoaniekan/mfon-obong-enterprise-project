@@ -9,11 +9,13 @@ import { AuthController } from './controllers/auth.controller';
 import { AuthService } from './services/auth.service';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Otp, OtpSchema } from './schemas/otp.schema';
+import { SystemActivityLogModule } from '../system-activity-logs/system-activity-log.module';
 
 @Module({
   imports: [
     UsersModule,
     PassportModule,
+    SystemActivityLogModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({

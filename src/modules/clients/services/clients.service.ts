@@ -15,11 +15,13 @@ import {
 } from '../dto/client.dto';
 import { UserDocument } from '../../users/schemas/user.schema';
 import { UserRole } from '../../../common/enums';
+import { SystemActivityLogService } from '../../system-activity-logs/services/system-activity-log.service';
 
 @Injectable()
 export class ClientsService {
   constructor(
     @InjectModel(Client.name) private readonly clientModel: Model<ClientDocument>,
+    private readonly systemActivityLogService: SystemActivityLogService,
   ) {}
 
   async create(createClientDto: CreateClientDto, currentUser?: UserDocument): Promise<Client> {
@@ -34,7 +36,22 @@ export class ClientsService {
       isRegistered: true,
       transactions: [],
     });
-    return client.save();
+    const savedClient = await client.save();
+
+    // Log client creation activity
+    try {
+      await this.systemActivityLogService.createLog({
+        action: 'CLIENT_CREATED',
+        details: `New client registered: ${savedClient.name} (${savedClient.phone})`,
+        performedBy: currentUser?.email || 'System',
+        role: currentUser?.role || 'STAFF',
+        device: 'System',
+      });
+    } catch (logError) {
+      console.error('Failed to log client creation:', logError);
+    }
+
+    return savedClient;
   }
 
   async findAll(query: QueryClientsDto, currentUser?: UserDocument): Promise<Client[]> {
@@ -83,7 +100,23 @@ export class ClientsService {
       }
     }
     Object.assign(client, updateClientDto);
-    return await client.save();
+    const savedClient = await client.save();
+
+    // Log client update activity
+    try {
+      const changes = Object.keys(updateClientDto).join(', ');
+      await this.systemActivityLogService.createLog({
+        action: 'CLIENT_UPDATED',
+        details: `Client updated: ${savedClient.name} - Changes: ${changes}`,
+        performedBy: currentUser?.email || 'System',
+        role: currentUser?.role || 'STAFF',
+        device: 'System',
+      });
+    } catch (logError) {
+      console.error('Failed to log client update:', logError);
+    }
+
+    return savedClient;
   }
 
   async addTransaction(
@@ -116,13 +149,41 @@ export class ClientsService {
     }
     client.transactions.push(transaction);
     client.lastTransactionDate = transaction.date;
-    return await client.save();
+    const savedClient = await client.save();
+
+    // Log client transaction activity
+    try {
+      await this.systemActivityLogService.createLog({
+        action: 'CLIENT_TRANSACTION_ADDED',
+        details: `${transaction.type} transaction added for ${client.name}: ${transaction.amount} - Balance: ${client.balance}`,
+        performedBy: currentUser?.email || 'System',
+        role: currentUser?.role || 'STAFF',
+        device: 'System',
+      });
+    } catch (logError) {
+      console.error('Failed to log client transaction:', logError);
+    }
+
+    return savedClient;
   }
 
   async remove(id: string, currentUser?: UserDocument): Promise<void> {
     const result = await this.clientModel.findByIdAndDelete(id);
     if (!result) {
       throw new NotFoundException('Client not found');
+    }
+
+    // Log client deletion activity
+    try {
+      await this.systemActivityLogService.createLog({
+        action: 'CLIENT_DELETED',
+        details: `Client deleted: ${result.name} (${result.phone})`,
+        performedBy: currentUser?.email || 'System',
+        role: currentUser?.role || 'ADMIN',
+        device: 'System',
+      });
+    } catch (logError) {
+      console.error('Failed to log client deletion:', logError);
     }
   }
 

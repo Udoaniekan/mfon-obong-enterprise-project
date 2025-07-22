@@ -11,7 +11,8 @@ export class AuthController {
 @Post('/login')
 async login(@Request() req) {
     console.log('Login request user:', req.user);
-    const result = await this.authService.login(req.user);
+    const userAgent = req.headers['user-agent'];
+    const result = await this.authService.login(req.user, userAgent);
     console.log('Login response:', result);
     return result;
   }

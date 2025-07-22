@@ -13,6 +13,7 @@ import { CategoriesModule } from './modules/categories/categories.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { BranchesModule } from './modules/branches/branches.module';
+import { SystemActivityLogModule } from './modules/system-activity-logs/system-activity-log.module';
 import { databaseConfig, jwtConfig } from './config/configuration';
 // ... your other imports
 
@@ -38,6 +39,7 @@ import { databaseConfig, jwtConfig } from './config/configuration';
     TransactionsModule,
     ReportsModule,
     SeedModule,
+    SystemActivityLogModule,
   ],
   controllers: [AppController],
   providers: [AppService],

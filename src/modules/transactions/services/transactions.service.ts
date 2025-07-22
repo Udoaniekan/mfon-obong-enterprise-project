@@ -11,6 +11,7 @@ import { Product } from '../../products/schemas/product.schema';
 import { ClientsService } from '../../clients/services/clients.service';
 import { ProductsService } from '../../products/services/products.service';
 import { StockOperation } from '../../products/dto/product.dto';
+import { SystemActivityLogService } from '../../system-activity-logs/services/system-activity-log.service';
 import {
   CreateTransactionDto,
   UpdateTransactionDto,
@@ -27,6 +28,7 @@ export class TransactionsService {
     private readonly productModel: Model<Product>,
     private readonly clientsService: ClientsService,
     private readonly productsService: ProductsService,
+    private readonly systemActivityLogService: SystemActivityLogService,
   ) {}
 
   async create(createTransactionDto: CreateTransactionDto, userId: string): Promise<Transaction> {
@@ -150,7 +152,27 @@ export class TransactionsService {
       }),
     );
 
-    return transaction.save();
+    const savedTransaction = await transaction.save();
+
+    // Log transaction creation activity
+    try {
+      const clientName = clientId ? 
+        (await this.clientsService.findById(createTransactionDto.clientId)).name : 
+        createTransactionDto.walkInClient.name;
+      
+      await this.systemActivityLogService.createLog({
+        action: 'TRANSACTION_CREATED',
+        details: `Transaction ${savedTransaction.invoiceNumber} created for ${clientName} (${createTransactionDto.type}) - Total: ${total}`,
+        performedBy: userId,
+        role: 'STAFF', // Default role, could be improved by fetching actual user role
+        device: 'System',
+      });
+    } catch (logError) {
+      console.error('Failed to log transaction creation:', logError);
+      // Don't fail transaction creation if logging fails
+    }
+
+    return savedTransaction;
   }
 
   async findAll(query: QueryTransactionsDto): Promise<Transaction[]> {
@@ -218,7 +240,23 @@ export class TransactionsService {
     }
 
     Object.assign(transaction, updateTransactionDto);
-    return transaction.save();
+    const savedTransaction = await transaction.save();
+
+    // Log transaction update activity
+    try {
+      const changes = Object.keys(updateTransactionDto).join(', ');
+      await this.systemActivityLogService.createLog({
+        action: 'TRANSACTION_UPDATED',
+        details: `Transaction ${savedTransaction.invoiceNumber} updated - Changes: ${changes}`,
+        performedBy: 'System',
+        role: 'STAFF',
+        device: 'System',
+      });
+    } catch (logError) {
+      console.error('Failed to log transaction update:', logError);
+    }
+
+    return savedTransaction;
   }
 
   async generateInvoiceNumber(): Promise<string> {
@@ -375,6 +413,21 @@ export class TransactionsService {
     const prefix = `WB${date.getFullYear()}${(date.getMonth()+1).toString().padStart(2,'0')}${date.getDate().toString().padStart(2,'0')}`;
     const count = await this.transactionModel.countDocuments({ waybillNumber: { $regex: `^${prefix}` } });
     transaction.waybillNumber = `${prefix}-${(count+1).toString().padStart(4,'0')}`;
-    return transaction.save();
+    const savedTransaction = await transaction.save();
+
+    // Log waybill assignment activity
+    try {
+      await this.systemActivityLogService.createLog({
+        action: 'WAYBILL_ASSIGNED',
+        details: `Waybill number ${savedTransaction.waybillNumber} assigned to transaction ${savedTransaction.invoiceNumber}`,
+        performedBy: 'System',
+        role: 'STAFF',
+        device: 'System',
+      });
+    } catch (logError) {
+      console.error('Failed to log waybill assignment:', logError);
+    }
+
+    return savedTransaction;
   }
 }
