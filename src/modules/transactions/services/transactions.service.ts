@@ -15,6 +15,7 @@ import {
   CreateTransactionDto,
   UpdateTransactionDto,
   QueryTransactionsDto,
+  CalculateTransactionDto,
 } from '../dto/transaction.dto';
 
 @Injectable()
@@ -278,6 +279,93 @@ export class TransactionsService {
     return report;
   }
 
+
+  async calculateTransaction(calculateTransactionDto: CalculateTransactionDto): Promise<any> {
+    let clientBalance = 0;
+    
+    // Get client balance if it's a registered client
+    if (calculateTransactionDto.clientId) {
+      const client = await this.clientsService.findById(calculateTransactionDto.clientId);
+      clientBalance = client.balance || 0;
+    } else if (!calculateTransactionDto.walkInClient || !calculateTransactionDto.walkInClient.name) {
+      throw new BadRequestException('Either clientId or walkInClient details (name) must be provided');
+    }
+
+    // Process items and calculate totals
+    let subtotal = 0;
+    const processedItems = await Promise.all(
+      calculateTransactionDto.items.map(async (item) => {
+        const product = await this.productsService.findById(item.productId);
+        
+        // Validate unit matches product category
+        if (item.unit !== product.unit) {
+          throw new BadRequestException(`Invalid unit ${item.unit} for product ${product.name}. This product only accepts ${product.unit}`);
+        }
+
+        // Validate stock availability
+        if (product.stock < item.quantity) {
+          throw new BadRequestException(`Insufficient stock for ${product.name}. Available: ${product.stock} ${product.unit}`);
+        }
+
+        // Calculate price 
+        const price = product.unitPrice * item.quantity;
+        const itemSubtotal = price - (item.discount || 0);
+        subtotal += itemSubtotal;
+
+        return {
+          productId: product._id,
+          productName: product.name,
+          quantity: item.quantity,
+          unit: item.unit,
+          unitPrice: price / item.quantity,
+          discount: item.discount || 0,
+          subtotal: itemSubtotal,
+        };
+      }),
+    );
+
+    const total = subtotal - (calculateTransactionDto.discount || 0);
+    
+    // Calculate required payment based on client type and transaction type
+    let requiredPayment = total;
+    let paymentDetails = {
+      subtotal,
+      discount: calculateTransactionDto.discount || 0,
+      total,
+      clientBalance,
+      requiredPayment,
+      canUseCreditBalance: false,
+      message: '',
+    };
+
+    if (calculateTransactionDto.clientId) {
+      // Registered client
+      if (calculateTransactionDto.type === 'PICKUP') {
+        requiredPayment = 0;
+        paymentDetails.message = 'No payment required for pickup transactions';
+      } else if (calculateTransactionDto.type === 'PURCHASE') {
+        requiredPayment = total - (clientBalance > 0 ? clientBalance : 0);
+        paymentDetails.canUseCreditBalance = clientBalance > 0;
+        
+        if (requiredPayment <= 0) {
+          paymentDetails.message = `No payment required. Client has sufficient balance (${clientBalance})`;
+          requiredPayment = 0;
+        } else {
+          paymentDetails.message = `Client must pay ${requiredPayment}. Current balance: ${clientBalance}`;
+        }
+      }
+    } else {
+      // Walk-in client
+      paymentDetails.message = `Walk-in client must pay full amount: ${total}`;
+    }
+
+    paymentDetails.requiredPayment = requiredPayment;
+
+    return {
+      ...paymentDetails,
+      items: processedItems,
+    };
+  }
 
     async assignWaybillNumber(id: string): Promise<Transaction> {
     const transaction = await this.transactionModel.findById(id);

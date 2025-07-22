@@ -15,6 +15,7 @@ import {
   CreateTransactionDto,
   UpdateTransactionDto,
   QueryTransactionsDto,
+  CalculateTransactionDto,
 } from '../dto/transaction.dto';
 import { Transaction } from '../schemas/transaction.schema';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -66,6 +67,13 @@ export class TransactionsController {
     return this.transactionsService.generateReport(startDate, endDate);
   }
 
+  @Post('calculate')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER, UserRole.STAFF)
+  async calculateTransaction(
+    @Body() calculateTransactionDto: CalculateTransactionDto,
+  ): Promise<any> {
+    return this.transactionsService.calculateTransaction(calculateTransactionDto);
+  }
 
     @Patch(':id/waybill')
   async assignWaybillNumber(@Param('id') id: string): Promise<any> {

@@ -124,6 +124,34 @@ export class UpdateTransactionDto {
   branchId?: string;
 }
 
+export class CalculateTransactionDto {
+  @IsOptional()
+  @IsMongoId()
+  clientId?: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => WalkInClientDto)
+  walkInClient?: WalkInClientDto;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TransactionItemDto)
+  items: TransactionItemDto[];
+
+  @IsNotEmpty()
+  @IsEnum(TransactionType)
+  type: TransactionType;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  discount?: number;
+
+  @IsMongoId()
+  branchId: string;
+}
+
 export class QueryTransactionsDto {
   @IsOptional()
   @IsMongoId()
