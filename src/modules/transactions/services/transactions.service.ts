@@ -31,7 +31,7 @@ export class TransactionsService {
     private readonly systemActivityLogService: SystemActivityLogService,
   ) {}
 
-  async create(createTransactionDto: CreateTransactionDto, userId: string): Promise<Transaction> {
+  async create(createTransactionDto: CreateTransactionDto, userId: string): Promise<Transaction & { clientBalance?: number }> {
     let clientId: Types.ObjectId | undefined = undefined;
     let walkInClient: any = undefined;
 
@@ -128,6 +128,7 @@ export class TransactionsService {
       status,
       branchId: createTransactionDto.branchId,
       type: createTransactionDto.type,
+      isPickedUp: createTransactionDto.type === 'PICKUP',
     });
 
     // Update client balance only for registered clients
@@ -172,7 +173,21 @@ export class TransactionsService {
       // Don't fail transaction creation if logging fails
     }
 
-    return savedTransaction;
+    // Get updated client balance for registered clients
+    let clientBalance = null;
+    if (clientId) {
+      try {
+        const updatedClient = await this.clientsService.findById(createTransactionDto.clientId);
+        clientBalance = updatedClient.balance || 0;
+      } catch (error) {
+        console.error('Failed to fetch updated client balance:', error);
+      }
+    }
+
+    return {
+      ...savedTransaction.toJSON(),
+      clientBalance,
+    };
   }
 
   async findAll(query: QueryTransactionsDto): Promise<Transaction[]> {
