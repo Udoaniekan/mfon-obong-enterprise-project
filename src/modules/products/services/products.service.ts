@@ -25,29 +25,40 @@ export class ProductsService {
     private readonly systemActivityLogService: SystemActivityLogService,
   ) {}
 
-  async create(createProductDto: CreateProductDto, currentUser?: UserDocument): Promise<Product> {
+  async create(
+    createProductDto: CreateProductDto,
+    currentUser?: UserDocument,
+  ): Promise<Product> {
     // Use current user's branchId if not provided by SUPER_ADMIN or MAINTAINER
     let branchId = createProductDto.branchId;
-    if (!branchId || (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role))) {
+    if (
+      !branchId ||
+      (currentUser &&
+        ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role))
+    ) {
       branchId = currentUser?.branchId?.toString();
     }
 
     // Validate that the unit matches the category
-    const category = await this.categoriesService.findById(createProductDto.categoryId);
+    const category = await this.categoriesService.findById(
+      createProductDto.categoryId,
+    );
     if (!category.units.includes(createProductDto.unit)) {
-      throw new BadRequestException(`Invalid unit ${createProductDto.unit} for category ${category.name}`);
+      throw new BadRequestException(
+        `Invalid unit ${createProductDto.unit} for category ${category.name}`,
+      );
     }
 
     // Check if a product with the same categoryId, unit, and branchId already exists
     const existingProduct = await this.productModel.findOne({
       categoryId: createProductDto.categoryId,
       unit: createProductDto.unit,
-      branchId: new Types.ObjectId(branchId)
+      branchId: new Types.ObjectId(branchId),
     });
 
     if (existingProduct) {
       throw new BadRequestException(
-        `A product with unit ${createProductDto.unit} already exists for category ${category.name} in this branch. Please choose a different unit.`
+        `A product with unit ${createProductDto.unit} already exists for category ${category.name} in this branch. Please choose a different unit.`,
       );
     }
 
@@ -61,7 +72,9 @@ export class ProductsService {
 
     // Log product creation activity
     try {
-      const category = await this.categoriesService.findById(createProductDto.categoryId);
+      const category = await this.categoriesService.findById(
+        createProductDto.categoryId,
+      );
       await this.systemActivityLogService.createLog({
         action: 'PRODUCT_CREATED',
         details: `Product created: ${savedProduct.name} (${savedProduct.unit}) in category ${category.name} - Price: ${savedProduct.unitPrice}`,
@@ -76,11 +89,17 @@ export class ProductsService {
     return savedProduct;
   }
 
-  async findAll(currentUser?: UserDocument, includeInactive = false): Promise<ProductDocument[]> {
-    let filter: any = includeInactive ? {} : { isActive: true };
-    
+  async findAll(
+    currentUser?: UserDocument,
+    includeInactive = false,
+  ): Promise<ProductDocument[]> {
+    const filter: any = includeInactive ? {} : { isActive: true };
+
     // Only SUPER_ADMIN and MAINTAINER can see all products
-    if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
+    if (
+      currentUser &&
+      ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
+    ) {
       filter.branchId = currentUser.branchId;
     }
 
@@ -91,11 +110,17 @@ export class ProductsService {
       .exec();
   }
 
-  async findById(id: string, currentUser?: UserDocument): Promise<ProductDocument> {
-    let filter: any = { _id: id };
-    
+  async findById(
+    id: string,
+    currentUser?: UserDocument,
+  ): Promise<ProductDocument> {
+    const filter: any = { _id: id };
+
     // Only SUPER_ADMIN and MAINTAINER can access products from other branches
-    if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
+    if (
+      currentUser &&
+      ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
+    ) {
       filter.branchId = currentUser.branchId;
     }
 
@@ -104,29 +129,39 @@ export class ProductsService {
       .populate('categoryId', 'name units')
       .populate('branchId', 'name')
       .exec();
-    
+
     if (!product) {
       throw new NotFoundException('Product not found');
     }
     return product;
   }
 
-  async update(id: string, updateProductDto: UpdateProductDto, currentUser?: UserDocument): Promise<ProductDocument> {
+  async update(
+    id: string,
+    updateProductDto: UpdateProductDto,
+    currentUser?: UserDocument,
+  ): Promise<ProductDocument> {
     const product = await this.findById(id, currentUser);
 
     // Validate that the unit matches the category if changing unit or category
     if (updateProductDto.unit || updateProductDto.categoryId) {
-      const categoryId = updateProductDto.categoryId || product.categoryId.toString();
+      const categoryId =
+        updateProductDto.categoryId || product.categoryId.toString();
       const category = await this.categoriesService.findById(categoryId);
       const unit = updateProductDto.unit || product.unit;
 
       if (!category.units.includes(unit)) {
-        throw new BadRequestException(`Invalid unit ${unit} for category ${category.name}`);
+        throw new BadRequestException(
+          `Invalid unit ${unit} for category ${category.name}`,
+        );
       }
     }
 
     // Track price history if price is changing
-    if (updateProductDto.unitPrice && updateProductDto.unitPrice !== product.unitPrice) {
+    if (
+      updateProductDto.unitPrice &&
+      updateProductDto.unitPrice !== product.unitPrice
+    ) {
       product.priceHistory.push({
         price: updateProductDto.unitPrice,
         date: new Date(),
@@ -135,10 +170,15 @@ export class ProductsService {
 
     // Handle branchId update for SUPER_ADMIN and MAINTAINER only
     if (updateProductDto.branchId) {
-      if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
+      if (
+        currentUser &&
+        ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
+      ) {
         delete updateProductDto.branchId; // Remove branchId if user doesn't have permission
       } else {
-        updateProductDto.branchId = new Types.ObjectId(updateProductDto.branchId) as any;
+        updateProductDto.branchId = new Types.ObjectId(
+          updateProductDto.branchId,
+        ) as any;
       }
     }
 
@@ -160,13 +200,20 @@ export class ProductsService {
     }
 
     return savedProduct;
-  }    
-  
-  async updateStock(id: string, updateStockDto: UpdateStockDto, currentUser?: UserDocument): Promise<ProductDocument> {
-    let filter: any = { _id: id };
-    
+  }
+
+  async updateStock(
+    id: string,
+    updateStockDto: UpdateStockDto,
+    currentUser?: UserDocument,
+  ): Promise<ProductDocument> {
+    const filter: any = { _id: id };
+
     // Only SUPER_ADMIN and MAINTAINER can update stock from other branches
-    if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
+    if (
+      currentUser &&
+      ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
+    ) {
       filter.branchId = currentUser.branchId;
     }
 
@@ -175,30 +222,34 @@ export class ProductsService {
     if (!product) {
       throw new NotFoundException(`Product with ID ${id} not found`);
     }
-    
+
     const { quantity, unit, operation } = updateStockDto;
-    
+
     // Validate the unit matches
     if (product.unit !== unit) {
-      throw new BadRequestException(`Unit mismatch: product has unit "${product.unit}", but operation specified "${unit}"`);
+      throw new BadRequestException(
+        `Unit mismatch: product has unit "${product.unit}", but operation specified "${unit}"`,
+      );
     }
-    
+
     // Validate stock level for subtraction
     if (operation === StockOperation.SUBTRACT && product.stock < quantity) {
-      throw new BadRequestException(`Insufficient stock: current ${product.stock}, requested ${quantity}`);
+      throw new BadRequestException(
+        `Insufficient stock: current ${product.stock}, requested ${quantity}`,
+      );
     }
-    
+
     // Calculate new stock
-    const newStock = operation === StockOperation.ADD
-      ? product.stock + quantity
-      : product.stock - quantity;
-    
+    const newStock =
+      operation === StockOperation.ADD
+        ? product.stock + quantity
+        : product.stock - quantity;
+
     // Use findOneAndUpdate to update in one atomic operation
-    await this.productModel.findOneAndUpdate(
-      filter,
-      { $set: { stock: newStock } }
-    ).exec();
-    
+    await this.productModel
+      .findOneAndUpdate(filter, { $set: { stock: newStock } })
+      .exec();
+
     // Return the updated product with populated fields
     const updatedProduct = await this.productModel
       .findOne(filter)
@@ -242,10 +293,13 @@ export class ProductsService {
   }
 
   async hardRemove(id: string, currentUser?: UserDocument): Promise<void> {
-    let filter: any = { _id: id };
-    
+    const filter: any = { _id: id };
+
     // Only SUPER_ADMIN and MAINTAINER can delete products from other branches
-    if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
+    if (
+      currentUser &&
+      ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
+    ) {
       filter.branchId = currentUser.branchId;
     }
 
@@ -268,16 +322,21 @@ export class ProductsService {
     }
   }
 
-  async getLowStockProducts(currentUser?: UserDocument): Promise<ProductDocument[]> {
-    let filter: any = {
+  async getLowStockProducts(
+    currentUser?: UserDocument,
+  ): Promise<ProductDocument[]> {
+    const filter: any = {
       isActive: true,
       $expr: {
-        $lte: ['$stock', '$minStockLevel']
-      }
+        $lte: ['$stock', '$minStockLevel'],
+      },
     };
-    
+
     // Only SUPER_ADMIN and MAINTAINER can see all low stock products
-    if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
+    if (
+      currentUser &&
+      ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
+    ) {
       filter.branchId = currentUser.branchId;
     }
 
@@ -288,11 +347,17 @@ export class ProductsService {
       .exec();
   }
 
-  async findByCategory(categoryId: string, currentUser?: UserDocument): Promise<ProductDocument[]> {
-    let filter: any = { categoryId, isActive: true };
-    
+  async findByCategory(
+    categoryId: string,
+    currentUser?: UserDocument,
+  ): Promise<ProductDocument[]> {
+    const filter: any = { categoryId, isActive: true };
+
     // Only SUPER_ADMIN and MAINTAINER can see products from all branches
-    if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
+    if (
+      currentUser &&
+      ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
+    ) {
       filter.branchId = currentUser.branchId;
     }
 

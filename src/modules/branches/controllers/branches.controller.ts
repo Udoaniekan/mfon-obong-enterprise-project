@@ -35,7 +35,12 @@ export class BranchesController {
   }
 
   @Get(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER, UserRole.ADMIN, UserRole.STAFF)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.MAINTAINER,
+    UserRole.ADMIN,
+    UserRole.STAFF,
+  )
   async findOne(@Param('id') id: string, @Request() req): Promise<Branch> {
     return this.branchesService.findById(id, req.user);
   }

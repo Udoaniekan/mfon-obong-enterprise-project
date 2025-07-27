@@ -29,12 +29,20 @@ export class ProductsController {
 
   @Post()
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER)
-  async create(@Body() createProductDto: CreateProductDto, @Request() req): Promise<Product> {
+  async create(
+    @Body() createProductDto: CreateProductDto,
+    @Request() req,
+  ): Promise<Product> {
     return this.productsService.create(createProductDto, req.user);
   }
 
   @Get()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER, UserRole.STAFF)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.MAINTAINER,
+    UserRole.STAFF,
+  )
   async findAll(@Request() req): Promise<Product[]> {
     return this.productsService.findAll(req.user);
   }
@@ -46,14 +54,27 @@ export class ProductsController {
   }
 
   @Get(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER, UserRole.STAFF)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.MAINTAINER,
+    UserRole.STAFF,
+  )
   async findOne(@Param('id') id: string, @Request() req): Promise<Product> {
     return this.productsService.findById(id, req.user);
   }
 
   @Get(':id/category')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER, UserRole.STAFF)
-  async findByCategory(@Param('id') id: string, @Request() req): Promise<ProductDocument[]> {
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.MAINTAINER,
+    UserRole.STAFF,
+  )
+  async findByCategory(
+    @Param('id') id: string,
+    @Request() req,
+  ): Promise<ProductDocument[]> {
     return this.productsService.findByCategory(id, req.user);
   }
 

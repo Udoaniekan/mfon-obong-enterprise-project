@@ -23,13 +23,17 @@ export class Client {
   @Prop({ default: 0 })
   balance: number; // Positive = credit, Negative = debt
 
-  @Prop({ type: [{ 
-    type: { type: String, enum: ['DEPOSIT', 'PURCHASE', 'PICKUP'] },
-    amount: Number,
-    description: String,
-    date: Date,
-    reference: String
-  }] })
+  @Prop({
+    type: [
+      {
+        type: { type: String, enum: ['DEPOSIT', 'PURCHASE', 'PICKUP'] },
+        amount: Number,
+        description: String,
+        date: Date,
+        reference: String,
+      },
+    ],
+  })
   transactions: Array<{
     type: 'DEPOSIT' | 'PURCHASE' | 'PICKUP';
     amount: number;

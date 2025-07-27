@@ -6,12 +6,7 @@ import { CategoriesModule } from '../categories/categories.module';
 import { BranchesModule } from '../branches/branches.module';
 
 @Module({
-  imports: [
-    CommandModule,
-    UsersModule,
-    CategoriesModule,
-    BranchesModule,
-  ],
+  imports: [CommandModule, UsersModule, CategoriesModule, BranchesModule],
   providers: [SeedService],
   exports: [SeedService],
 })

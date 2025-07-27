@@ -1,6 +1,6 @@
 export function extractDeviceInfo(userAgent: string): string {
   if (!userAgent) return 'API Client';
-  
+
   // Handle API testing tools
   if (userAgent.includes('Thunder Client')) {
     return 'Thunder Client (API Testing)';
@@ -15,7 +15,7 @@ export function extractDeviceInfo(userAgent: string): string {
   } else if (userAgent.includes('fetch')) {
     return 'Fetch API';
   }
-  
+
   // Extract browser for real browsers
   let browser = 'Unknown Browser';
   if (userAgent.includes('Chrome') && !userAgent.includes('Edg')) {
@@ -27,7 +27,7 @@ export function extractDeviceInfo(userAgent: string): string {
   } else if (userAgent.includes('Edg')) {
     browser = 'Edge';
   }
-  
+
   // Extract OS
   let os = 'Unknown OS';
   if (userAgent.includes('Windows NT 10.0')) {
@@ -45,6 +45,6 @@ export function extractDeviceInfo(userAgent: string): string {
   } else if (userAgent.includes('iPhone') || userAgent.includes('iPad')) {
     os = 'iOS';
   }
-  
+
   return `${browser} on ${os}`;
 }

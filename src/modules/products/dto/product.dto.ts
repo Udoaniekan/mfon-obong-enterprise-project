@@ -5,7 +5,7 @@ import {
   IsString,
   Min,
   IsMongoId,
-  IsEnum
+  IsEnum,
 } from 'class-validator';
 
 export class CreateProductDto {
@@ -20,7 +20,7 @@ export class CreateProductDto {
   @IsNotEmpty()
   @IsString()
   unit: string;
-  
+
   @IsNotEmpty()
   @IsNumber()
   @Min(0)
@@ -45,7 +45,7 @@ export class UpdateProductDto {
   @IsOptional()
   @IsString()
   name?: string;
-  
+
   @IsOptional()
   @IsMongoId()
   categoryId?: string;
@@ -53,7 +53,7 @@ export class UpdateProductDto {
   @IsOptional()
   @IsString()
   unit?: string;
-  
+
   @IsOptional()
   @IsNumber()
   @Min(0)
@@ -76,7 +76,7 @@ export class UpdateProductDto {
 
 export enum StockOperation {
   ADD = 'add',
-  SUBTRACT = 'subtract'
+  SUBTRACT = 'subtract',
 }
 
 export class UpdateStockDto {
@@ -84,7 +84,7 @@ export class UpdateStockDto {
   @Min(1)
   @IsNotEmpty()
   readonly quantity: number;
-  
+
   @IsString()
   @IsNotEmpty()
   readonly unit: string;

@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Category, CategoryDocument } from '../schemas/category.schema';
@@ -12,10 +16,17 @@ export class CategoriesService {
     @InjectModel(Category.name) private categoryModel: Model<CategoryDocument>,
   ) {}
 
-  async create(createCategoryDto: CreateCategoryDto, currentUser?: UserDocument): Promise<CategoryDocument> {
+  async create(
+    createCategoryDto: CreateCategoryDto,
+    currentUser?: UserDocument,
+  ): Promise<CategoryDocument> {
     // Use current user's branchId if not provided by SUPER_ADMIN or MAINTAINER
     let branchId = createCategoryDto.branchId;
-    if (!branchId || (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role))) {
+    if (
+      !branchId ||
+      (currentUser &&
+        ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role))
+    ) {
       branchId = currentUser?.branchId?.toString();
     }
 
@@ -33,17 +44,26 @@ export class CategoriesService {
     }
   }
 
-  async findAll(currentUser?: UserDocument, includeInactive = false): Promise<CategoryDocument[]> {
-    let filter: any = includeInactive ? {} : { isActive: true };
-    
+  async findAll(
+    currentUser?: UserDocument,
+    includeInactive = false,
+  ): Promise<CategoryDocument[]> {
+    const filter: any = includeInactive ? {} : { isActive: true };
+
     // Only SUPER_ADMIN and MAINTAINER can see all categories
-    if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
+    if (
+      currentUser &&
+      ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
+    ) {
       filter.branchId = currentUser.branchId;
     }
 
     return this.categoryModel.find(filter).populate('branchId', 'name').exec();
   }
-  async findById(id: string, currentUser?: UserDocument): Promise<CategoryDocument> {
+  async findById(
+    id: string,
+    currentUser?: UserDocument,
+  ): Promise<CategoryDocument> {
     try {
       // Check if we've received a stringified object instead of a simple ID
       if (id.includes('ObjectId') && id.includes('_id')) {
@@ -54,16 +74,21 @@ export class CategoriesService {
           id = match[1];
         }
       }
-      
-      let filter: any = { _id: id };
-      
+
+      const filter: any = { _id: id };
+
       // Only SUPER_ADMIN and MAINTAINER can access categories from other branches
-      if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
+      if (
+        currentUser &&
+        ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
+      ) {
         filter.branchId = currentUser.branchId;
       }
-      
-      const category = await this.categoryModel.findOne(filter).populate('branchId', 'name');
-      
+
+      const category = await this.categoryModel
+        .findOne(filter)
+        .populate('branchId', 'name');
+
       if (!category) {
         throw new NotFoundException('Category not found');
       }
@@ -74,35 +99,55 @@ export class CategoriesService {
     }
   }
 
-  async findByName(name: string, currentUser?: UserDocument): Promise<CategoryDocument | null> {
-    let filter: any = { name };
-    
+  async findByName(
+    name: string,
+    currentUser?: UserDocument,
+  ): Promise<CategoryDocument | null> {
+    const filter: any = { name };
+
     // Only SUPER_ADMIN and MAINTAINER can search across all branches
-    if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
+    if (
+      currentUser &&
+      ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
+    ) {
       filter.branchId = currentUser.branchId;
     }
 
-    return this.categoryModel.findOne(filter).populate('branchId', 'name').exec();
+    return this.categoryModel
+      .findOne(filter)
+      .populate('branchId', 'name')
+      .exec();
   }
 
-  async update(id: string, updateCategoryDto: UpdateCategoryDto, currentUser?: UserDocument): Promise<CategoryDocument> {
+  async update(
+    id: string,
+    updateCategoryDto: UpdateCategoryDto,
+    currentUser?: UserDocument,
+  ): Promise<CategoryDocument> {
     const category = await this.findById(id, currentUser);
-    
+
     // Handle branchId update for SUPER_ADMIN and MAINTAINER only
     if (updateCategoryDto.branchId) {
-      if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
+      if (
+        currentUser &&
+        ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
+      ) {
         delete updateCategoryDto.branchId; // Remove branchId if user doesn't have permission
       } else {
-        updateCategoryDto.branchId = new Types.ObjectId(updateCategoryDto.branchId) as any;
+        updateCategoryDto.branchId = new Types.ObjectId(
+          updateCategoryDto.branchId,
+        ) as any;
       }
     }
-    
+
     try {
       Object.assign(category, updateCategoryDto);
       return await category.save();
     } catch (error) {
       if (error.code === 11000) {
-        throw new ConflictException('Category name already exists in this branch');
+        throw new ConflictException(
+          'Category name already exists in this branch',
+        );
       }
       throw error;
     }
@@ -114,7 +159,11 @@ export class CategoriesService {
     await category.save();
   }
 
-  async validateCategoryAndUnit(categoryId: string, unit: string, currentUser?: UserDocument): Promise<boolean> {
+  async validateCategoryAndUnit(
+    categoryId: string,
+    unit: string,
+    currentUser?: UserDocument,
+  ): Promise<boolean> {
     const category = await this.findById(categoryId, currentUser);
     return category.units.includes(unit);
   }

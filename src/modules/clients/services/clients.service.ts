@@ -20,11 +20,15 @@ import { SystemActivityLogService } from '../../system-activity-logs/services/sy
 @Injectable()
 export class ClientsService {
   constructor(
-    @InjectModel(Client.name) private readonly clientModel: Model<ClientDocument>,
+    @InjectModel(Client.name)
+    private readonly clientModel: Model<ClientDocument>,
     private readonly systemActivityLogService: SystemActivityLogService,
   ) {}
 
-  async create(createClientDto: CreateClientDto, currentUser?: UserDocument): Promise<Client> {
+  async create(
+    createClientDto: CreateClientDto,
+    currentUser?: UserDocument,
+  ): Promise<Client> {
     const existingClient = await this.clientModel.findOne({
       phone: createClientDto.phone,
     });
@@ -54,7 +58,10 @@ export class ClientsService {
     return savedClient;
   }
 
-  async findAll(query: QueryClientsDto, currentUser?: UserDocument): Promise<Client[]> {
+  async findAll(
+    query: QueryClientsDto,
+    currentUser?: UserDocument,
+  ): Promise<Client[]> {
     const filter: any = {};
     if (query.search) {
       filter.$or = [
@@ -77,10 +84,16 @@ export class ClientsService {
         filter.lastTransactionDate.$lte = query.endDate;
       }
     }
-    return this.clientModel.find(filter).sort({ lastTransactionDate: -1 }).exec();
+    return this.clientModel
+      .find(filter)
+      .sort({ lastTransactionDate: -1 })
+      .exec();
   }
 
-  async findById(id: string, currentUser?: UserDocument): Promise<ClientDocument> {
+  async findById(
+    id: string,
+    currentUser?: UserDocument,
+  ): Promise<ClientDocument> {
     const client = await this.clientModel.findById(id);
     if (!client) {
       throw new NotFoundException('Client not found');
@@ -88,7 +101,11 @@ export class ClientsService {
     return client;
   }
 
-  async update(id: string, updateClientDto: UpdateClientDto, currentUser?: UserDocument): Promise<ClientDocument> {
+  async update(
+    id: string,
+    updateClientDto: UpdateClientDto,
+    currentUser?: UserDocument,
+  ): Promise<ClientDocument> {
     const client = await this.findById(id, currentUser);
     if (updateClientDto.phone) {
       const existingClient = await this.clientModel.findOne({
@@ -226,14 +243,14 @@ export class ClientsService {
     return summary;
   }
 
-  async findDebtors(minAmount: number = 0, currentUser?: UserDocument): Promise<Client[]> {
+  async findDebtors(
+    minAmount: number = 0,
+    currentUser?: UserDocument,
+  ): Promise<Client[]> {
     const filter: any = {
       balance: { $lt: -minAmount },
     };
-    return this.clientModel
-      .find(filter)
-      .sort({ balance: 1 })
-      .exec();
+    return this.clientModel.find(filter).sort({ balance: 1 }).exec();
   }
 
   async createWalkInClient(currentUser?: UserDocument): Promise<Client> {

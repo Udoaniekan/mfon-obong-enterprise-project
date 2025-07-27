@@ -16,13 +16,13 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
       if (!user) {
         throw new UnauthorizedException('Invalid credentials');
       }
-      
+
       // Ensure we have the required fields for JWT
       if (!user._id && !user.id) {
         console.error('User object missing ID:', user);
         throw new Error('Invalid user object structure');
       }
-        return {
+      return {
         _id: user._id || user.id,
         email: user.email,
         role: user.role,

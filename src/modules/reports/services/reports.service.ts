@@ -1,8 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { Transaction, TransactionDocument } from '../../transactions/schemas/transaction.schema';
-import { Product, ProductDocument } from '../../products/schemas/product.schema';
+import {
+  Transaction,
+  TransactionDocument,
+} from '../../transactions/schemas/transaction.schema';
+import {
+  Product,
+  ProductDocument,
+} from '../../products/schemas/product.schema';
 import { Client, ClientDocument } from '../../clients/schemas/client.schema';
 interface SalesReportProduct {
   productId: string;
@@ -44,7 +50,10 @@ export class ReportsService {
     private readonly clientModel: Model<ClientDocument>,
   ) {}
 
-  async generateSalesReport(startDate: Date, endDate: Date): Promise<SalesReport> {
+  async generateSalesReport(
+    startDate: Date,
+    endDate: Date,
+  ): Promise<SalesReport> {
     const transactions = await this.transactionModel
       .find({
         createdAt: { $gte: startDate, $lte: endDate },
@@ -65,7 +74,9 @@ export class ReportsService {
     let totalPending = 0;
 
     transactions.forEach((transaction) => {
-      const dateKey = new Date(transaction.createdAt).toISOString().split('T')[0];
+      const dateKey = new Date(transaction.createdAt)
+        .toISOString()
+        .split('T')[0];
       const paymentMethod = transaction.paymentMethod || 'UNKNOWN';
 
       // Update totals
@@ -75,7 +86,8 @@ export class ReportsService {
       totalPending += transaction.total - transaction.amountPaid;
 
       // Update payment methods
-      paymentMethods[paymentMethod] = (paymentMethods[paymentMethod] || 0) + transaction.amountPaid;
+      paymentMethods[paymentMethod] =
+        (paymentMethods[paymentMethod] || 0) + transaction.amountPaid;
 
       // Update daily sales
       dailySales[dateKey] = (dailySales[dateKey] || 0) + transaction.total;
@@ -93,9 +105,12 @@ export class ReportsService {
 
         currentProduct.quantity += item.quantity;
         currentProduct.revenue += item.subtotal;
-        
+
         const currentUnitQuantity = currentProduct.units.get(item.unit) || 0;
-        currentProduct.units.set(item.unit, currentUnitQuantity + item.quantity);
+        currentProduct.units.set(
+          item.unit,
+          currentUnitQuantity + item.quantity,
+        );
 
         productSales.set(productId, currentProduct);
       });
@@ -103,14 +118,14 @@ export class ReportsService {
 
     // Convert product sales to final format
     const topProducts = Array.from(productSales.values())
-      .map(product => ({
+      .map((product) => ({
         productId: product.productId,
         name: product.name,
         quantity: product.quantity,
         revenue: product.revenue,
         units: Array.from(product.units.entries()).reduce(
           (acc, [unit, qty]) => ({ ...acc, [unit]: qty }),
-          {}
+          {},
         ),
       }))
       .sort((a, b) => b.revenue - a.revenue)
@@ -132,13 +147,16 @@ export class ReportsService {
 
   async generateInventoryReport() {
     const products = await this.productModel.find().exec();
-    
-    const categoryStats = new Map<string, {
-      count: number;
-      value: number;
-      lowStock: number;
-    }>();
-    
+
+    const categoryStats = new Map<
+      string,
+      {
+        count: number;
+        value: number;
+        lowStock: number;
+      }
+    >();
+
     const lowStockProducts: Array<{
       id: string;
       name: string;
@@ -189,7 +207,7 @@ export class ReportsService {
         ...acc,
         [category]: stats,
       }),
-      {}
+      {},
     );
 
     return {
@@ -234,7 +252,10 @@ export class ReportsService {
 
       current.totalPurchases += transaction.total;
       current.transactions++;
-      if (!current.lastTransaction || transaction.createdAt > current.lastTransaction) {
+      if (
+        !current.lastTransaction ||
+        transaction.createdAt > current.lastTransaction
+      ) {
         current.lastTransaction = transaction.createdAt;
       }
 

@@ -24,4 +24,5 @@ export class SystemActivityLog {
   timestamp: Date;
 }
 
-export const SystemActivityLogSchema = SchemaFactory.createForClass(SystemActivityLog);
+export const SystemActivityLogSchema =
+  SchemaFactory.createForClass(SystemActivityLog);

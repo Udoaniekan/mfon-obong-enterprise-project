@@ -31,7 +31,11 @@ export class Transaction {
   @Prop({ required: true })
   invoiceNumber: string;
 
-  @Prop({ type: String, enum: ['DEPOSIT', 'PURCHASE', 'PICKUP'], required: true })
+  @Prop({
+    type: String,
+    enum: ['DEPOSIT', 'PURCHASE', 'PICKUP'],
+    required: true,
+  })
   type: string;
 
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Client', required: false })
@@ -87,7 +91,11 @@ export class Transaction {
   @Prop({ type: String, default: null })
   waybillNumber?: string;
 
-  @Prop({ type: String, enum: ['PENDING', 'COMPLETED', 'CANCELLED'], default: 'PENDING' })
+  @Prop({
+    type: String,
+    enum: ['PENDING', 'COMPLETED', 'CANCELLED'],
+    default: 'PENDING',
+  })
   status: string;
 
   @Prop()

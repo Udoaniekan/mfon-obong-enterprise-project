@@ -44,10 +44,7 @@ export class UsersController {
   }
   @Patch(':id/unblock')
   @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER)
-  async unblockUser(
-    @Param('id') id: string,
-    @Request() req,
-  ): Promise<User> {
+  async unblockUser(@Param('id') id: string, @Request() req): Promise<User> {
     return this.usersService.unblockUser(id, req.user);
   }
 
@@ -68,8 +65,13 @@ export class UsersController {
   async findOne(@Param('id') id: string, @Request() req): Promise<User> {
     const user = await this.usersService.findById(id, req.user);
     // Only allow ADMIN to get users from their own branch
-    if (req.user.role === UserRole.ADMIN && user.branchId.toString() !== req.user.branchId) {
-      throw new Error('Forbidden: ADMIN can only access users from their own branch');
+    if (
+      req.user.role === UserRole.ADMIN &&
+      user.branchId.toString() !== req.user.branchId
+    ) {
+      throw new Error(
+        'Forbidden: ADMIN can only access users from their own branch',
+      );
     }
     return user;
   }
@@ -83,8 +85,13 @@ export class UsersController {
   ): Promise<User> {
     const user = await this.usersService.findById(id, req.user);
     // Only allow ADMIN to update users from their own branch
-    if (req.user.role === UserRole.ADMIN && user.branchId.toString() !== req.user.branchId) {
-      throw new Error('Forbidden: ADMIN can only update users from their own branch');
+    if (
+      req.user.role === UserRole.ADMIN &&
+      user.branchId.toString() !== req.user.branchId
+    ) {
+      throw new Error(
+        'Forbidden: ADMIN can only update users from their own branch',
+      );
     }
     return this.usersService.update(id, updateUserDto, req.user);
   }
@@ -102,10 +109,7 @@ export class UsersController {
     @Request() req,
   ): Promise<{ message: string }> {
     // Only allow users to update their own password or MAINTAINER
-    if (
-      req.user.role !== UserRole.MAINTAINER &&
-      req.user.userId !== id
-    ) {
+    if (req.user.role !== UserRole.MAINTAINER && req.user.userId !== id) {
       throw new Error('Forbidden');
     }
     await this.usersService.updatePassword(
@@ -125,9 +129,15 @@ export class UsersController {
   ): Promise<{ url: string }> {
     // Only allow MAINTAINER or the owner of the profile
     if (req.user.role !== UserRole.MAINTAINER && req.user.userId !== id) {
-      throw new Error('Forbidden: Only MAINTAINER or the owner can upload profile picture');
+      throw new Error(
+        'Forbidden: Only MAINTAINER or the owner can upload profile picture',
+      );
     }
-    const url = await this.userProfilePictureService.uploadProfilePicture(id, file, req.user);
+    const url = await this.userProfilePictureService.uploadProfilePicture(
+      id,
+      file,
+      req.user,
+    );
     return { url };
   }
 
@@ -138,7 +148,9 @@ export class UsersController {
   ): Promise<{ message: string }> {
     // Only allow MAINTAINER or the owner of the profile
     if (req.user.role !== UserRole.MAINTAINER && req.user.userId !== id) {
-      throw new Error('Forbidden: Only MAINTAINER or the owner can delete profile picture');
+      throw new Error(
+        'Forbidden: Only MAINTAINER or the owner can delete profile picture',
+      );
     }
     await this.userProfilePictureService.deleteProfilePicture(id, req.user);
     return { message: 'Profile picture deleted' };
@@ -146,7 +158,10 @@ export class UsersController {
 
   @Get('branch/:branchId')
   @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER, UserRole.ADMIN)
-  async getUsersByBranch(@Param('branchId') branchId: string, @Request() req): Promise<User[]> {
+  async getUsersByBranch(
+    @Param('branchId') branchId: string,
+    @Request() req,
+  ): Promise<User[]> {
     // Only allow ADMIN to access their own branch
     if (req.user.role === UserRole.ADMIN && req.user.branchId !== branchId) {
       throw new Error('Forbidden: ADMIN can only access their own branch');

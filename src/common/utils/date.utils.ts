@@ -1,5 +1,8 @@
 export class DateUtils {
-  static getDateRange(period: 'day' | 'week' | 'month' | 'year'): { startDate: Date; endDate: Date } {
+  static getDateRange(period: 'day' | 'week' | 'month' | 'year'): {
+    startDate: Date;
+    endDate: Date;
+  } {
     const endDate = new Date();
     const startDate = new Date();
 

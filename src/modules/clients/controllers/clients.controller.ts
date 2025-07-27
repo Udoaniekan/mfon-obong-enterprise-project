@@ -30,43 +30,77 @@ export class ClientsController {
 
   @Post()
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER)
-  async create(@Body() createClientDto: CreateClientDto, @Request() req): Promise<Client> {
+  async create(
+    @Body() createClientDto: CreateClientDto,
+    @Request() req,
+  ): Promise<Client> {
     return this.clientsService.create(createClientDto, req.user);
   }
 
   @Post('walk-in')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER, UserRole.STAFF)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.MAINTAINER,
+    UserRole.STAFF,
+  )
   async createWalkInClient(@Request() req): Promise<Client> {
     return this.clientsService.createWalkInClient(req.user);
   }
 
   @Get()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER, UserRole.STAFF)
-  async findAll(@Query() query: QueryClientsDto, @Request() req): Promise<Client[]> {
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.MAINTAINER,
+    UserRole.STAFF,
+  )
+  async findAll(
+    @Query() query: QueryClientsDto,
+    @Request() req,
+  ): Promise<Client[]> {
     return this.clientsService.findAll(query, req.user);
   }
 
   @Get('debtors')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER)
-  async findDebtors(@Request() req, @Query('minAmount') minAmount?: number): Promise<Client[]> {
+  async findDebtors(
+    @Request() req,
+    @Query('minAmount') minAmount?: number,
+  ): Promise<Client[]> {
     return this.clientsService.findDebtors(minAmount, req.user);
   }
 
   @Get(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER, UserRole.STAFF)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.MAINTAINER,
+    UserRole.STAFF,
+  )
   async findOne(@Param('id') id: string, @Request() req): Promise<Client> {
     return this.clientsService.findById(id, req.user);
   }
 
   @Get(':id/transactions')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER, UserRole.STAFF)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.MAINTAINER,
+    UserRole.STAFF,
+  )
   async getTransactionHistory(
     @Param('id') id: string,
     @Request() req,
     @Query('startDate') startDate?: Date,
     @Query('endDate') endDate?: Date,
   ) {
-    return this.clientsService.getTransactionHistory(id, startDate, endDate, req.user);
+    return this.clientsService.getTransactionHistory(
+      id,
+      startDate,
+      endDate,
+      req.user,
+    );
   }
 
   @Patch(':id')
@@ -80,7 +114,12 @@ export class ClientsController {
   }
 
   @Post(':id/transactions')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER, UserRole.STAFF)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.MAINTAINER,
+    UserRole.STAFF,
+  )
   async addTransaction(
     @Param('id') id: string,
     @Body() transactionDto: AddTransactionDto,

@@ -30,7 +30,8 @@ export class SeedService {
     } catch (error) {
       // If branch already exists, find it
       const branches = await this.branchesService.findAll();
-      defaultBranch = branches.find(b => b.name === 'Head Office') || branches[0];
+      defaultBranch =
+        branches.find((b) => b.name === 'Head Office') || branches[0];
       console.log(`Using existing branch: ${defaultBranch?.name}`);
     }
 
@@ -58,7 +59,10 @@ export class SeedService {
       if (error instanceof ConflictException) {
         console.log(`Super admin already exists: ${superAdmin.email}`);
       } else {
-        console.error(`Error creating super admin ${superAdmin.email}:`, error.message);
+        console.error(
+          `Error creating super admin ${superAdmin.email}:`,
+          error.message,
+        );
       }
     }
   }
@@ -70,8 +74,9 @@ export class SeedService {
   async seedCategories() {
     // Find the default branch
     const branches = await this.branchesService.findAll();
-    const defaultBranch = branches.find(b => b.name === 'Head Office') || branches[0];
-    
+    const defaultBranch =
+      branches.find((b) => b.name === 'Head Office') || branches[0];
+
     if (!defaultBranch) {
       console.error('No default branch available. Cannot create categories.');
       return;
@@ -145,7 +150,10 @@ export class SeedService {
         if (error instanceof ConflictException) {
           console.log(`Category already exists: ${category.name}`);
         } else {
-          console.error(`Error creating category ${category.name}:`, error.message);
+          console.error(
+            `Error creating category ${category.name}:`,
+            error.message,
+          );
         }
       }
     }
@@ -158,8 +166,9 @@ export class SeedService {
   async seedMaintainer() {
     // Find the default branch
     const branches = await this.branchesService.findAll();
-    const defaultBranch = branches.find(b => b.name === 'Head Office') || branches[0];
-    
+    const defaultBranch =
+      branches.find((b) => b.name === 'Head Office') || branches[0];
+
     if (!defaultBranch) {
       console.error('No default branch available. Cannot create maintainer.');
       return;
@@ -184,7 +193,10 @@ export class SeedService {
       if (error instanceof ConflictException) {
         console.log(`Maintainer already exists: ${maintainer.email}`);
       } else {
-        console.error(`Error creating maintainer ${maintainer.email}:`, error.message);
+        console.error(
+          `Error creating maintainer ${maintainer.email}:`,
+          error.message,
+        );
       }
     }
   }

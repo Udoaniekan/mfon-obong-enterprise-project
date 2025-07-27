@@ -1,4 +1,11 @@
-import { IsNotEmpty, IsString, IsArray, IsOptional, IsBoolean, IsMongoId } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  IsArray,
+  IsOptional,
+  IsBoolean,
+  IsMongoId,
+} from 'class-validator';
 
 export class CreateCategoryDto {
   @IsNotEmpty()

@@ -1,4 +1,3 @@
-
 import {
   Injectable,
   NotFoundException,
@@ -6,7 +5,10 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { Transaction, TransactionDocument } from '../schemas/transaction.schema';
+import {
+  Transaction,
+  TransactionDocument,
+} from '../schemas/transaction.schema';
 import { Product } from '../../products/schemas/product.schema';
 import { ClientsService } from '../../clients/services/clients.service';
 import { ProductsService } from '../../products/services/products.service';
@@ -31,15 +33,23 @@ export class TransactionsService {
     private readonly systemActivityLogService: SystemActivityLogService,
   ) {}
 
-  async create(createTransactionDto: CreateTransactionDto, userId: string): Promise<Transaction & { clientBalance?: number }> {
+  async create(
+    createTransactionDto: CreateTransactionDto,
+    userId: string,
+  ): Promise<Transaction & { clientBalance?: number }> {
     let clientId: Types.ObjectId | undefined = undefined;
     let walkInClient: any = undefined;
 
     if (createTransactionDto.clientId) {
       // Registered client
-      const client = await this.clientsService.findById(createTransactionDto.clientId);
+      const client = await this.clientsService.findById(
+        createTransactionDto.clientId,
+      );
       clientId = (client as any)._id;
-    } else if (createTransactionDto.walkInClient && createTransactionDto.walkInClient.name) {
+    } else if (
+      createTransactionDto.walkInClient &&
+      createTransactionDto.walkInClient.name
+    ) {
       // Walk-in client
       walkInClient = {
         name: createTransactionDto.walkInClient.name,
@@ -47,7 +57,9 @@ export class TransactionsService {
         address: createTransactionDto.walkInClient.address,
       };
     } else {
-      throw new BadRequestException('Either clientId or walkInClient details (name) must be provided');
+      throw new BadRequestException(
+        'Either clientId or walkInClient details (name) must be provided',
+      );
     }
 
     // Process items and calculate totals
@@ -55,16 +67,20 @@ export class TransactionsService {
     const processedItems = await Promise.all(
       createTransactionDto.items.map(async (item) => {
         const product = await this.productsService.findById(item.productId);
-        
+
         // Validate unit matches product category
         if (item.unit !== product.unit) {
-          throw new BadRequestException(`Invalid unit ${item.unit} for product ${product.name}. This product only accepts ${product.unit}`);
+          throw new BadRequestException(
+            `Invalid unit ${item.unit} for product ${product.name}. This product only accepts ${product.unit}`,
+          );
         }
 
         // Validate stock availability
         if (product.stock < item.quantity) {
-          throw new BadRequestException(`Insufficient stock for ${product.name}. Available: ${product.stock} ${product.unit}`);
-        }        // Calculate price 
+          throw new BadRequestException(
+            `Insufficient stock for ${product.name}. Available: ${product.stock} ${product.unit}`,
+          );
+        } // Calculate price
         const price = product.unitPrice * item.quantity;
         const itemSubtotal = price - (item.discount || 0);
         subtotal += itemSubtotal;
@@ -93,17 +109,23 @@ export class TransactionsService {
         status = 'COMPLETED';
       } else if (type === 'PURCHASE') {
         // Fetch client balance
-        const client = await this.clientsService.findById(createTransactionDto.clientId);
+        const client = await this.clientsService.findById(
+          createTransactionDto.clientId,
+        );
         const clientBalance = client.balance || 0;
         const requiredPayment = total - (clientBalance > 0 ? clientBalance : 0);
         if (requiredPayment < 0) {
           // Client has more than enough balance, no payment needed
           if (amountPaid !== 0) {
-            throw new BadRequestException(`No payment required. Client already has enough balance.`);
+            throw new BadRequestException(
+              `No payment required. Client already has enough balance.`,
+            );
           }
         } else {
           if (amountPaid !== requiredPayment) {
-            throw new BadRequestException(`Insufficient payment. Client must pay exactly ${requiredPayment} to complete this purchase. Current balance: ${clientBalance}`);
+            throw new BadRequestException(
+              `Insufficient payment. Client must pay exactly ${requiredPayment} to complete this purchase. Current balance: ${clientBalance}`,
+            );
           }
         }
         status = 'COMPLETED';
@@ -133,7 +155,8 @@ export class TransactionsService {
 
     // Update client balance only for registered clients
     if (clientId) {
-      const ledgerType = (createTransactionDto.type === 'PICKUP') ? 'PICKUP' : 'PURCHASE';
+      const ledgerType =
+        createTransactionDto.type === 'PICKUP' ? 'PICKUP' : 'PURCHASE';
       await this.clientsService.addTransaction(clientId.toString(), {
         type: ledgerType,
         amount: total,
@@ -157,10 +180,11 @@ export class TransactionsService {
 
     // Log transaction creation activity
     try {
-      const clientName = clientId ? 
-        (await this.clientsService.findById(createTransactionDto.clientId)).name : 
-        createTransactionDto.walkInClient.name;
-      
+      const clientName = clientId
+        ? (await this.clientsService.findById(createTransactionDto.clientId))
+            .name
+        : createTransactionDto.walkInClient.name;
+
       await this.systemActivityLogService.createLog({
         action: 'TRANSACTION_CREATED',
         details: `Transaction ${savedTransaction.invoiceNumber} created for ${clientName} (${createTransactionDto.type}) - Total: ${total}`,
@@ -177,7 +201,9 @@ export class TransactionsService {
     let clientBalance = null;
     if (clientId) {
       try {
-        const updatedClient = await this.clientsService.findById(createTransactionDto.clientId);
+        const updatedClient = await this.clientsService.findById(
+          createTransactionDto.clientId,
+        );
         clientBalance = updatedClient.balance || 0;
       } catch (error) {
         console.error('Failed to fetch updated client balance:', error);
@@ -194,7 +220,8 @@ export class TransactionsService {
     const filter: any = {};
 
     if (query.clientId) filter.clientId = query.clientId;
-    if (query.invoiceNumber) filter.invoiceNumber = new RegExp(query.invoiceNumber, 'i');
+    if (query.invoiceNumber)
+      filter.invoiceNumber = new RegExp(query.invoiceNumber, 'i');
     if (query.status) filter.status = query.status;
     if (query.isPickedUp !== undefined) filter.isPickedUp = query.isPickedUp;
 
@@ -225,7 +252,10 @@ export class TransactionsService {
     return transaction;
   }
 
-  async update(id: string, updateTransactionDto: UpdateTransactionDto): Promise<Transaction> {
+  async update(
+    id: string,
+    updateTransactionDto: UpdateTransactionDto,
+  ): Promise<Transaction> {
     const transaction = await this.transactionModel.findById(id);
     if (!transaction) {
       throw new NotFoundException('Transaction not found');
@@ -233,12 +263,14 @@ export class TransactionsService {
 
     // Handle payment updates
     if (updateTransactionDto.amountPaid !== undefined) {
-      const newAmountPaid = transaction.amountPaid + updateTransactionDto.amountPaid;
+      const newAmountPaid =
+        transaction.amountPaid + updateTransactionDto.amountPaid;
       if (newAmountPaid > transaction.total) {
         throw new BadRequestException('Payment amount exceeds total');
       }
       transaction.amountPaid = newAmountPaid;
-      transaction.status = newAmountPaid >= transaction.total ? 'COMPLETED' : 'PENDING';
+      transaction.status =
+        newAmountPaid >= transaction.total ? 'COMPLETED' : 'PENDING';
     }
 
     // Handle pickup status
@@ -247,12 +279,15 @@ export class TransactionsService {
       transaction.pickupDate = updateTransactionDto.pickupDate || new Date();
 
       // Add pickup transaction to client ledger
-      await this.clientsService.addTransaction(transaction.clientId.toString(), {
-        type: 'PICKUP',
-        amount: transaction.total,
-        description: `Pickup for Invoice #${transaction.invoiceNumber}`,
-        reference: transaction._id.toString(),
-      });
+      await this.clientsService.addTransaction(
+        transaction.clientId.toString(),
+        {
+          type: 'PICKUP',
+          amount: transaction.total,
+          description: `Pickup for Invoice #${transaction.invoiceNumber}`,
+          reference: transaction._id.toString(),
+        },
+      );
     }
 
     Object.assign(transaction, updateTransactionDto);
@@ -280,7 +315,7 @@ export class TransactionsService {
     const year = date.getFullYear().toString().slice(-2);
     const month = (date.getMonth() + 1).toString().padStart(2, '0');
     const prefix = `INV${year}${month}`;
-    
+
     const lastInvoice = await this.transactionModel
       .findOne({ invoiceNumber: new RegExp(`^${prefix}`) })
       .sort({ invoiceNumber: -1 });
@@ -301,19 +336,22 @@ export class TransactionsService {
       totalSales: 0,
       totalDiscount: 0,
       totalReceived: 0,
-      productsReport: new Map<string, {
-        quantity: number,
-        revenue: number,
-        units: Map<string, number>
-      }>(),
+      productsReport: new Map<
+        string,
+        {
+          quantity: number;
+          revenue: number;
+          units: Map<string, number>;
+        }
+      >(),
     };
 
-    transactions.forEach(transaction => {
+    transactions.forEach((transaction) => {
       report.totalSales += transaction.total;
       report.totalDiscount += transaction.discount;
       report.totalReceived += transaction.amountPaid;
 
-      transaction.items.forEach(item => {
+      transaction.items.forEach((item) => {
         const productStats = report.productsReport.get(item.productId) || {
           quantity: 0,
           revenue: 0,
@@ -322,7 +360,7 @@ export class TransactionsService {
 
         productStats.quantity += item.quantity;
         productStats.revenue += item.subtotal;
-        
+
         const unitCount = productStats.units.get(item.unit) || 0;
         productStats.units.set(item.unit, unitCount + item.quantity);
 
@@ -333,16 +371,24 @@ export class TransactionsService {
     return report;
   }
 
-
-  async calculateTransaction(calculateTransactionDto: CalculateTransactionDto): Promise<any> {
+  async calculateTransaction(
+    calculateTransactionDto: CalculateTransactionDto,
+  ): Promise<any> {
     let clientBalance = 0;
-    
+
     // Get client balance if it's a registered client
     if (calculateTransactionDto.clientId) {
-      const client = await this.clientsService.findById(calculateTransactionDto.clientId);
+      const client = await this.clientsService.findById(
+        calculateTransactionDto.clientId,
+      );
       clientBalance = client.balance || 0;
-    } else if (!calculateTransactionDto.walkInClient || !calculateTransactionDto.walkInClient.name) {
-      throw new BadRequestException('Either clientId or walkInClient details (name) must be provided');
+    } else if (
+      !calculateTransactionDto.walkInClient ||
+      !calculateTransactionDto.walkInClient.name
+    ) {
+      throw new BadRequestException(
+        'Either clientId or walkInClient details (name) must be provided',
+      );
     }
 
     // Process items and calculate totals
@@ -350,18 +396,22 @@ export class TransactionsService {
     const processedItems = await Promise.all(
       calculateTransactionDto.items.map(async (item) => {
         const product = await this.productsService.findById(item.productId);
-        
+
         // Validate unit matches product category
         if (item.unit !== product.unit) {
-          throw new BadRequestException(`Invalid unit ${item.unit} for product ${product.name}. This product only accepts ${product.unit}`);
+          throw new BadRequestException(
+            `Invalid unit ${item.unit} for product ${product.name}. This product only accepts ${product.unit}`,
+          );
         }
 
         // Validate stock availability
         if (product.stock < item.quantity) {
-          throw new BadRequestException(`Insufficient stock for ${product.name}. Available: ${product.stock} ${product.unit}`);
+          throw new BadRequestException(
+            `Insufficient stock for ${product.name}. Available: ${product.stock} ${product.unit}`,
+          );
         }
 
-        // Calculate price 
+        // Calculate price
         const price = product.unitPrice * item.quantity;
         const itemSubtotal = price - (item.discount || 0);
         subtotal += itemSubtotal;
@@ -379,10 +429,10 @@ export class TransactionsService {
     );
 
     const total = subtotal - (calculateTransactionDto.discount || 0);
-    
+
     // Calculate required payment based on client type and transaction type
     let requiredPayment = total;
-    let paymentDetails = {
+    const paymentDetails = {
       subtotal,
       discount: calculateTransactionDto.discount || 0,
       total,
@@ -400,7 +450,7 @@ export class TransactionsService {
       } else if (calculateTransactionDto.type === 'PURCHASE') {
         requiredPayment = total - (clientBalance > 0 ? clientBalance : 0);
         paymentDetails.canUseCreditBalance = clientBalance > 0;
-        
+
         if (requiredPayment <= 0) {
           paymentDetails.message = `No payment required. Client has sufficient balance (${clientBalance})`;
           requiredPayment = 0;
@@ -421,14 +471,16 @@ export class TransactionsService {
     };
   }
 
-    async assignWaybillNumber(id: string): Promise<Transaction> {
+  async assignWaybillNumber(id: string): Promise<Transaction> {
     const transaction = await this.transactionModel.findById(id);
     if (!transaction) throw new NotFoundException('Transaction not found');
     // Auto-generate waybill number
     const date = new Date();
-    const prefix = `WB${date.getFullYear()}${(date.getMonth()+1).toString().padStart(2,'0')}${date.getDate().toString().padStart(2,'0')}`;
-    const count = await this.transactionModel.countDocuments({ waybillNumber: { $regex: `^${prefix}` } });
-    transaction.waybillNumber = `${prefix}-${(count+1).toString().padStart(4,'0')}`;
+    const prefix = `WB${date.getFullYear()}${(date.getMonth() + 1).toString().padStart(2, '0')}${date.getDate().toString().padStart(2, '0')}`;
+    const count = await this.transactionModel.countDocuments({
+      waybillNumber: { $regex: `^${prefix}` },
+    });
+    transaction.waybillNumber = `${prefix}-${(count + 1).toString().padStart(4, '0')}`;
     const savedTransaction = await transaction.save();
 
     // Log waybill assignment activity

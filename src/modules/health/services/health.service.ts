@@ -32,25 +32,23 @@ export interface HealthStatus {
 
 @Injectable()
 export class HealthService {
-  constructor(
-    @InjectConnection() private readonly connection: Connection,
-  ) {}
+  constructor(@InjectConnection() private readonly connection: Connection) {}
 
   async checkHealth(): Promise<HealthStatus> {
     const startTime = Date.now();
-    
+
     // Check database connection
     const databaseCheck = await this.checkDatabase();
-    
+
     // Check memory usage
     const memoryCheck = this.checkMemory();
-    
+
     // Get environment info
     const environmentCheck = this.checkEnvironment();
-    
+
     // Determine overall status
     let overallStatus: 'healthy' | 'unhealthy' | 'degraded' = 'healthy';
-    
+
     if (databaseCheck.status === 'down') {
       overallStatus = 'unhealthy';
     } else if (memoryCheck.status === 'critical') {
@@ -71,15 +69,19 @@ export class HealthService {
     };
   }
 
-  private async checkDatabase(): Promise<{ status: 'up' | 'down'; responseTime?: number; error?: string }> {
+  private async checkDatabase(): Promise<{
+    status: 'up' | 'down';
+    responseTime?: number;
+    error?: string;
+  }> {
     try {
       const startTime = Date.now();
-      
+
       // Simple ping to check database connectivity
       await this.connection.db.admin().ping();
-      
+
       const responseTime = Date.now() - startTime;
-      
+
       return {
         status: 'up',
         responseTime,
@@ -108,7 +110,7 @@ export class HealthService {
     const percentage = Math.round((usedMemory / totalMemory) * 100);
 
     let status: 'normal' | 'high' | 'critical' = 'normal';
-    
+
     if (percentage > 90) {
       status = 'critical';
     } else if (percentage > 75) {

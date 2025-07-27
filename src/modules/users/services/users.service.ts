@@ -1,6 +1,10 @@
 // ...existing code...
 // ...existing code...
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import * as bcrypt from 'bcrypt';
@@ -15,10 +19,17 @@ export class UsersService {
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     private readonly systemActivityLogService: SystemActivityLogService,
   ) {}
-  async blockUser(id: string, blockUserDto: { reason?: string }, currentUser?: UserDocument): Promise<User> {
-    let filter: any = { _id: id };
+  async blockUser(
+    id: string,
+    blockUserDto: { reason?: string },
+    currentUser?: UserDocument,
+  ): Promise<User> {
+    const filter: any = { _id: id };
     // Only SUPER_ADMIN and MAINTAINER can block users from other branches
-    if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
+    if (
+      currentUser &&
+      ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
+    ) {
       filter.branchId = currentUser.branchId;
     }
     const user = await this.userModel.findOne(filter);
@@ -46,9 +57,12 @@ export class UsersService {
   }
 
   async unblockUser(id: string, currentUser?: UserDocument): Promise<User> {
-    let filter: any = { _id: id };
+    const filter: any = { _id: id };
     // Only SUPER_ADMIN and MAINTAINER can unblock users from other branches
-    if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
+    if (
+      currentUser &&
+      ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
+    ) {
       filter.branchId = currentUser.branchId;
     }
     const user = await this.userModel.findOne(filter);
@@ -73,7 +87,10 @@ export class UsersService {
     return user;
   }
   async create(createUserDto: CreateUserDto): Promise<User> {
-    console.log('Creating user with data:', { ...createUserDto, password: '[REDACTED]' });
+    console.log('Creating user with data:', {
+      ...createUserDto,
+      password: '[REDACTED]',
+    });
     const { email, password } = createUserDto;
 
     const existingUser = await this.userModel.findOne({ email });
@@ -107,42 +124,64 @@ export class UsersService {
   }
   async findAll(currentUser?: UserDocument): Promise<User[]> {
     let filter = {};
-    
+
     // Only SUPER_ADMIN and MAINTAINER can see all users
-    if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
+    if (
+      currentUser &&
+      ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
+    ) {
       filter = { branchId: currentUser.branchId };
     }
 
-    const users = await this.userModel.find(filter).select('-password').populate('branchId', 'name').exec();
+    const users = await this.userModel
+      .find(filter)
+      .select('-password')
+      .populate('branchId', 'name')
+      .exec();
     console.log('Users filtered by branch:', JSON.stringify(users, null, 2));
     return users;
   }
 
   async findById(id: string, currentUser?: UserDocument): Promise<User> {
-    let filter: any = { _id: id };
-    
+    const filter: any = { _id: id };
+
     // Only SUPER_ADMIN and MAINTAINER can access users from other branches
-    if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
+    if (
+      currentUser &&
+      ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
+    ) {
       filter.branchId = currentUser.branchId;
     }
 
-    const user = await this.userModel.findOne(filter).select('-password').populate('branchId', 'name');
+    const user = await this.userModel
+      .findOne(filter)
+      .select('-password')
+      .populate('branchId', 'name');
     if (!user) {
       throw new NotFoundException('User not found');
     }
     return user;
   }
   async findByEmail(email: string): Promise<UserDocument> {
-    const user = await this.userModel.findOne({ email }).populate('branchId', 'name');
+    const user = await this.userModel
+      .findOne({ email })
+      .populate('branchId', 'name');
     console.log('Found user:', JSON.stringify(user, null, 2));
     return user;
   }
 
-  async update(id: string, updateUserDto: UpdateUserDto, currentUser?: UserDocument): Promise<User> {
-    let filter: any = { _id: id };
-    
+  async update(
+    id: string,
+    updateUserDto: UpdateUserDto,
+    currentUser?: UserDocument,
+  ): Promise<User> {
+    const filter: any = { _id: id };
+
     // Only SUPER_ADMIN and MAINTAINER can update users from other branches
-    if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
+    if (
+      currentUser &&
+      ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
+    ) {
       filter.branchId = currentUser.branchId;
     }
 
@@ -151,7 +190,9 @@ export class UsersService {
     }
 
     if (updateUserDto.branchId) {
-      updateUserDto.branchId = new Types.ObjectId(updateUserDto.branchId) as any;
+      updateUserDto.branchId = new Types.ObjectId(
+        updateUserDto.branchId,
+      ) as any;
     }
 
     const user = await this.userModel
@@ -165,9 +206,12 @@ export class UsersService {
 
     // Log user update activity
     try {
-      const changes = Object.keys(updateUserDto).filter(key => key !== 'password');
-      const changeDetails = changes.length > 0 ? ` - Updated: ${changes.join(', ')}` : '';
-      
+      const changes = Object.keys(updateUserDto).filter(
+        (key) => key !== 'password',
+      );
+      const changeDetails =
+        changes.length > 0 ? ` - Updated: ${changes.join(', ')}` : '';
+
       await this.systemActivityLogService.createLog({
         action: 'USER_UPDATED',
         details: `User updated: ${user.name} (${user.email})${changeDetails}`,
@@ -183,10 +227,13 @@ export class UsersService {
   }
 
   async remove(id: string, currentUser?: UserDocument): Promise<void> {
-    let filter: any = { _id: id };
-    
+    const filter: any = { _id: id };
+
     // Only SUPER_ADMIN and MAINTAINER can delete users from other branches
-    if (currentUser && ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
+    if (
+      currentUser &&
+      ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
+    ) {
       filter.branchId = currentUser.branchId;
     }
 
@@ -209,7 +256,11 @@ export class UsersService {
     }
   }
 
-  async updatePassword(userId: string, previousPassword: string, newPassword: string): Promise<void> {
+  async updatePassword(
+    userId: string,
+    previousPassword: string,
+    newPassword: string,
+  ): Promise<void> {
     const user = await this.userModel.findById(userId);
     if (!user) {
       throw new NotFoundException('User not found');
@@ -258,6 +309,10 @@ export class UsersService {
   }
 
   async getUsersByBranch(branchId: string): Promise<User[]> {
-    return this.userModel.find({ branchId: new Types.ObjectId(branchId) }).select('-password').populate('branchId', 'name').exec();
+    return this.userModel
+      .find({ branchId: new Types.ObjectId(branchId) })
+      .select('-password')
+      .populate('branchId', 'name')
+      .exec();
   }
 }

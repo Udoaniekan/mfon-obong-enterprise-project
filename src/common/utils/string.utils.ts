@@ -13,14 +13,16 @@ export class StringUtils {
     const date = new Date();
     const yr = year || date.getFullYear().toString().slice(-2);
     const mn = month || (date.getMonth() + 1).toString().padStart(2, '0');
-    const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+    const random = Math.floor(Math.random() * 10000)
+      .toString()
+      .padStart(4, '0');
     return `${prefix}${yr}${mn}${random}`;
   }
 
   static sanitizePhone(phone: string): string {
     // Remove all non-numeric characters
     const cleaned = phone.replace(/\D/g, '');
-    
+
     // Ensure it starts with country code (default to Nigeria)
     if (cleaned.startsWith('0')) {
       return '234' + cleaned.substring(1);

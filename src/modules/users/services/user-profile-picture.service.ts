@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { User, UserDocument } from '../schemas/user.schema';
@@ -11,13 +15,22 @@ export class UserProfilePictureService {
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
   ) {}
 
-  async uploadProfilePicture(userId: string, file: Express.Multer.File, currentUser: any): Promise<string> {
+  async uploadProfilePicture(
+    userId: string,
+    file: Express.Multer.File,
+    currentUser: any,
+  ): Promise<string> {
     try {
       if (file.mimetype !== 'image/jpeg' && file.mimetype !== 'image/pjpeg') {
         throw new ForbiddenException('Only JPEG images are allowed');
       }
-      if (currentUser.userId !== userId && !['SUPER_ADMIN', 'MAINTAINER'].includes(currentUser.role)) {
-        throw new ForbiddenException('You can only update your own profile picture');
+      if (
+        currentUser.userId !== userId &&
+        !['SUPER_ADMIN', 'MAINTAINER'].includes(currentUser.role)
+      ) {
+        throw new ForbiddenException(
+          'You can only update your own profile picture',
+        );
       }
       const user = await this.userModel.findById(userId);
       if (!user) throw new NotFoundException('User not found');
@@ -51,17 +64,27 @@ export class UserProfilePictureService {
       return user.profilePicture;
     } catch (error) {
       console.error('Profile picture upload error:', error);
-      if (error instanceof ForbiddenException || error instanceof NotFoundException) {
+      if (
+        error instanceof ForbiddenException ||
+        error instanceof NotFoundException
+      ) {
         throw error;
       }
-      throw new ForbiddenException(error.message || 'Profile picture upload failed');
+      throw new ForbiddenException(
+        error.message || 'Profile picture upload failed',
+      );
     }
   }
 
   async deleteProfilePicture(userId: string, currentUser: any): Promise<void> {
     try {
-      if (currentUser.userId !== userId && !['SUPER_ADMIN', 'MAINTAINER'].includes(currentUser.role)) {
-        throw new ForbiddenException('You can only delete your own profile picture');
+      if (
+        currentUser.userId !== userId &&
+        !['SUPER_ADMIN', 'MAINTAINER'].includes(currentUser.role)
+      ) {
+        throw new ForbiddenException(
+          'You can only delete your own profile picture',
+        );
       }
       const user = await this.userModel.findById(userId);
       if (!user) throw new NotFoundException('User not found');
@@ -73,10 +96,15 @@ export class UserProfilePictureService {
       }
     } catch (error) {
       console.error('Profile picture delete error:', error);
-      if (error instanceof ForbiddenException || error instanceof NotFoundException) {
+      if (
+        error instanceof ForbiddenException ||
+        error instanceof NotFoundException
+      ) {
         throw error;
       }
-      throw new ForbiddenException(error.message || 'Profile picture delete failed');
+      throw new ForbiddenException(
+        error.message || 'Profile picture delete failed',
+      );
     }
   }
 }

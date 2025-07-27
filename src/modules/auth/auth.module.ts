@@ -19,16 +19,15 @@ import { SystemActivityLogModule } from '../system-activity-logs/system-activity
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET') || 'your-fallback-secret-key',
+        secret:
+          configService.get<string>('JWT_SECRET') || 'your-fallback-secret-key',
         signOptions: {
           expiresIn: '24h',
         },
       }),
       inject: [ConfigService],
     }),
-    MongooseModule.forFeature([
-      { name: Otp.name, schema: OtpSchema },
-    ]),
+    MongooseModule.forFeature([{ name: Otp.name, schema: OtpSchema }]),
   ],
   controllers: [AuthController],
   providers: [AuthService, LocalStrategy, JwtStrategy],

@@ -9,9 +9,9 @@ import { SystemActivityLogModule } from '../system-activity-logs/system-activity
 
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: User.name, schema: UserSchema }],),
+    MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
     CloudinaryModule,
-    SystemActivityLogModule
+    SystemActivityLogModule,
   ],
   providers: [UsersService, UserProfilePictureService],
   controllers: [UsersController],

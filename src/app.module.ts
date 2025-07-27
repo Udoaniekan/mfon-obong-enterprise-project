@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
-// import configuration from './config/configuration'; 
+// import configuration from './config/configuration';
 import { AppService } from './app.service';
 import { AppController } from './app.controller';
 import { SeedModule } from './modules/seed/seed.module';
@@ -30,7 +30,7 @@ import { databaseConfig, jwtConfig } from './config/configuration';
         uri: configService.get<string>('MONGODB_URI'), // Also updated to match your config structure
       }),
       inject: [ConfigService],
-    }), 
+    }),
     UsersModule,
     AuthModule,
     BranchesModule,

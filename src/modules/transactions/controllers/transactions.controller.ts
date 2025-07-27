@@ -1,4 +1,3 @@
-
 import {
   Controller,
   Get,
@@ -29,28 +28,51 @@ export class TransactionsController {
   constructor(private readonly transactionsService: TransactionsService) {}
 
   @Post()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER, UserRole.STAFF)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.MAINTAINER,
+    UserRole.STAFF,
+  )
   async create(
     @Body() createTransactionDto: CreateTransactionDto,
     @Request() req,
   ): Promise<Transaction> {
-    return this.transactionsService.create(createTransactionDto, req.user.userId);
+    return this.transactionsService.create(
+      createTransactionDto,
+      req.user.userId,
+    );
   }
 
   @Get()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER, UserRole.STAFF)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.MAINTAINER,
+    UserRole.STAFF,
+  )
   async findAll(@Query() query: QueryTransactionsDto): Promise<Transaction[]> {
     return this.transactionsService.findAll(query);
   }
 
   @Get(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER, UserRole.STAFF)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.MAINTAINER,
+    UserRole.STAFF,
+  )
   async findOne(@Param('id') id: string): Promise<Transaction> {
     return this.transactionsService.findById(id);
   }
 
   @Patch(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER, UserRole.STAFF)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.MAINTAINER,
+    UserRole.STAFF,
+  )
   async update(
     @Param('id') id: string,
     @Body() updateTransactionDto: UpdateTransactionDto,
@@ -68,14 +90,21 @@ export class TransactionsController {
   }
 
   @Post('calculate')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER, UserRole.STAFF)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.MAINTAINER,
+    UserRole.STAFF,
+  )
   async calculateTransaction(
     @Body() calculateTransactionDto: CalculateTransactionDto,
   ): Promise<any> {
-    return this.transactionsService.calculateTransaction(calculateTransactionDto);
+    return this.transactionsService.calculateTransaction(
+      calculateTransactionDto,
+    );
   }
 
-    @Patch(':id/waybill')
+  @Patch(':id/waybill')
   async assignWaybillNumber(@Param('id') id: string): Promise<any> {
     return this.transactionsService.assignWaybillNumber(id);
   }

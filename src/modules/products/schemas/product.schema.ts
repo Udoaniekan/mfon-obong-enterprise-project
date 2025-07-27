@@ -9,7 +9,11 @@ export class Product {
   @Prop({ required: true })
   name: string;
 
-  @Prop({ type: MongooseSchema.Types.ObjectId, ref: Category.name, required: true })
+  @Prop({
+    type: MongooseSchema.Types.ObjectId,
+    ref: Category.name,
+    required: true,
+  })
   categoryId: string;
 
   @Prop({ required: true })

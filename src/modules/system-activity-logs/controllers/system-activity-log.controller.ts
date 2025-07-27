@@ -10,11 +10,15 @@ import { UserRole } from '../../../common/enums';
 @Controller('system-activity-logs')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class SystemActivityLogController {
-  constructor(private readonly systemActivityLogService: SystemActivityLogService) {}
+  constructor(
+    private readonly systemActivityLogService: SystemActivityLogService,
+  ) {}
 
   @Post()
   @Roles(UserRole.MAINTAINER)
-  async createLog(@Body() createSystemActivityLogDto: CreateSystemActivityLogDto): Promise<SystemActivityLog> {
+  async createLog(
+    @Body() createSystemActivityLogDto: CreateSystemActivityLogDto,
+  ): Promise<SystemActivityLog> {
     return this.systemActivityLogService.createLog(createSystemActivityLogDto);
   }
 
