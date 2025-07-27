@@ -207,6 +207,7 @@ export class TransactionsService {
     return this.transactionModel
       .find(filter)
       .populate('clientId', 'name phone')
+      .populate('userId', 'name')
       .sort({ createdAt: -1 })
       .exec();
   }
