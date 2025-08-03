@@ -128,6 +128,17 @@ export class ClientsController {
     return this.clientsService.addTransaction(id, transactionDto, req.user);
   }
 
+  @Get(':id/lifetime-value')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.MAINTAINER,
+    UserRole.STAFF,
+  )
+  async getLifetimeValue(@Param('id') id: string, @Request() req) {
+    return this.clientsService.getLifetimeValue(id, req.user);
+  }
+
   @Delete(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER)
   async remove(@Param('id') id: string, @Request() req): Promise<void> {

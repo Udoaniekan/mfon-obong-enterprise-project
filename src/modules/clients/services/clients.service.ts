@@ -262,4 +262,29 @@ export class ClientsService {
     });
     return walkInClient.save();
   }
+
+  async getLifetimeValue(
+    id: string,
+    currentUser?: UserDocument,
+  ): Promise<{ lifetimeValue: number; totalSpent: number; currentBalance: number }> {
+    const client = await this.findById(id, currentUser);
+    
+    let totalSpent = 0;
+    client.transactions.forEach((transaction) => {
+      if (transaction.type === 'PURCHASE' || transaction.type === 'PICKUP') {
+        totalSpent += transaction.amount;
+      }
+    });
+
+    const currentBalance = client.balance;
+    const lifetimeValue = currentBalance >= 0 ? 
+      totalSpent + currentBalance : 
+      totalSpent - currentBalance;
+
+    return {
+      lifetimeValue,
+      totalSpent,
+      currentBalance,
+    };
+  }
 }
