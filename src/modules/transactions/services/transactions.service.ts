@@ -507,7 +507,7 @@ export class TransactionsService {
     };
 
     if (branchId) {
-      filter.branchId = new Types.ObjectId(branchId);
+      filter.branchId = branchId; // Keep as string since it's stored as string in DB
     }
 
     if (startDate || endDate) {
@@ -566,7 +566,7 @@ export class TransactionsService {
     };
 
     if (branchId) {
-      filter.branchId = new Types.ObjectId(branchId);
+      filter.branchId = branchId; // Keep as string since it's stored as string in DB
     }
 
     const dailyData = await this.transactionModel.aggregate([
@@ -623,7 +623,7 @@ export class TransactionsService {
     };
 
     if (branchId) {
-      filter.branchId = new Types.ObjectId(branchId);
+      filter.branchId = branchId; // Keep as string since it's stored as string in DB
     }
 
     const monthlyData = await this.transactionModel.aggregate([
@@ -677,7 +677,7 @@ export class TransactionsService {
     };
 
     if (branchId) {
-      filter.branchId = new Types.ObjectId(branchId);
+      filter.branchId = branchId; // Keep as string since it's stored as string in DB
     }
 
     const yearlyData = await this.transactionModel.aggregate([
