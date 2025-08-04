@@ -62,19 +62,14 @@ export class ClientsController {
     return this.clientsService.findAll(query, req.user);
   }
 
-  @Post('fix-corrupted-balances')
-  @Roles(UserRole.SUPER_ADMIN)
-  async fixCorruptedBalances(@Request() req) {
-    return this.clientsService.fixCorruptedBalances();
-  }
-
   @Get('debtors')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER)
   async findDebtors(
     @Request() req,
     @Query('minAmount') minAmount?: number,
   ): Promise<Client[]> {
-    return this.clientsService.findDebtors(minAmount, req.user);
+    const parsedMinAmount = minAmount ? Number(minAmount) : 0;
+    return this.clientsService.findDebtors(parsedMinAmount, req.user);
   }
 
   @Get(':id')
