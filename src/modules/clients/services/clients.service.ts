@@ -247,10 +247,35 @@ export class ClientsService {
     minAmount: number = 0,
     currentUser?: UserDocument,
   ): Promise<Client[]> {
-    const filter: Record<string, any> = {
-      balance: { $lt: -minAmount },
-    };
-    return this.clientModel.find(filter).sort({ balance: 1 }).exec();
+    // Get all clients and filter in JavaScript to handle NaN values
+    const allClients = await this.clientModel.find().exec();
+    
+    const validDebtors = allClients.filter(client => {
+      const balance = Number(client.balance);
+      return !isNaN(balance) && balance < -minAmount;
+    });
+    
+    return validDebtors.sort((a, b) => Number(a.balance) - Number(b.balance));
+  }
+
+  async fixCorruptedBalances(): Promise<{fixed: number, errors: any[]}> {
+    const allClients = await this.clientModel.find().exec();
+    let fixed = 0;
+    const errors = [];
+
+    for (const client of allClients) {
+      if (isNaN(Number(client.balance))) {
+        try {
+          client.balance = 0; // Reset corrupted balance to 0
+          await client.save();
+          fixed++;
+        } catch (error) {
+          errors.push({ clientId: client._id, error: error.message });
+        }
+      }
+    }
+
+    return { fixed, errors };
   }
 
   async createWalkInClient(currentUser?: UserDocument): Promise<Client> {

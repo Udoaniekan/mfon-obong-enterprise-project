@@ -62,6 +62,12 @@ export class ClientsController {
     return this.clientsService.findAll(query, req.user);
   }
 
+  @Post('fix-corrupted-balances')
+  @Roles(UserRole.SUPER_ADMIN)
+  async fixCorruptedBalances(@Request() req) {
+    return this.clientsService.fixCorruptedBalances();
+  }
+
   @Get('debtors')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER)
   async findDebtors(
