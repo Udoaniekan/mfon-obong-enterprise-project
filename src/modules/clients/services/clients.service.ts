@@ -252,7 +252,8 @@ export class ClientsService {
     
     const validDebtors = allClients.filter(client => {
       const balance = Number(client.balance);
-      return !isNaN(balance) && balance < -minAmount;
+      // For debtors, we want negative balances where the absolute value is >= minAmount
+      return !isNaN(balance) && balance < 0 && Math.abs(balance) >= minAmount;
     });
     
     return validDebtors.sort((a, b) => Number(a.balance) - Number(b.balance));
