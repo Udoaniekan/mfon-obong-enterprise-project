@@ -247,7 +247,7 @@ export class ClientsService {
     minAmount: number = 0,
     currentUser?: UserDocument,
   ): Promise<Client[]> {
-    const filter: any = {
+    const filter: Record<string, any> = {
       balance: { $lt: -minAmount },
     };
     return this.clientModel.find(filter).sort({ balance: 1 }).exec();
