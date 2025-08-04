@@ -498,4 +498,225 @@ export class TransactionsService {
 
     return savedTransaction;
   }
+
+  // Revenue Analytics Methods
+  async getTotalRevenue(branchId?: string, startDate?: Date, endDate?: Date) {
+    const filter: any = {
+      type: { $in: ['PURCHASE', 'PICKUP'] },
+      status: { $ne: 'CANCELLED' }
+    };
+
+    if (branchId) {
+      filter.branchId = new Types.ObjectId(branchId);
+    }
+
+    if (startDate || endDate) {
+      filter.createdAt = {};
+      if (startDate) filter.createdAt.$gte = startDate;
+      if (endDate) filter.createdAt.$lte = endDate;
+    }
+
+    const result = await this.transactionModel.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: null,
+          totalRevenue: { $sum: '$total' },
+          transactionCount: { $sum: 1 },
+          totalAmountPaid: { $sum: '$amountPaid' },
+          totalDiscount: { $sum: '$discount' }
+        }
+      }
+    ]);
+
+    const transactions = await this.transactionModel
+      .find(filter)
+      .populate('branchId', 'name')
+      .sort({ createdAt: -1 })
+      .limit(10);
+
+    return {
+      totalRevenue: result[0]?.totalRevenue || 0,
+      transactionCount: result[0]?.transactionCount || 0,
+      totalAmountPaid: result[0]?.totalAmountPaid || 0,
+      totalDiscount: result[0]?.totalDiscount || 0,
+      period: this.formatPeriod(startDate, endDate),
+      recentTransactions: transactions
+    };
+  }
+
+  async getDailyRevenue(branchId?: string, date?: Date, startDate?: Date, endDate?: Date) {
+    const targetDate = date || new Date();
+    let dateRange: { start: Date; end: Date };
+
+    if (startDate && endDate) {
+      dateRange = { start: startDate, end: endDate };
+    } else {
+      // Single day range
+      dateRange = {
+        start: new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate()),
+        end: new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate() + 1)
+      };
+    }
+
+    const filter: any = {
+      type: { $in: ['PURCHASE', 'PICKUP'] },
+      status: { $ne: 'CANCELLED' },
+      createdAt: { $gte: dateRange.start, $lt: dateRange.end }
+    };
+
+    if (branchId) {
+      filter.branchId = new Types.ObjectId(branchId);
+    }
+
+    const dailyData = await this.transactionModel.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$createdAt' },
+            month: { $month: '$createdAt' },
+            day: { $dayOfMonth: '$createdAt' }
+          },
+          totalRevenue: { $sum: '$total' },
+          transactionCount: { $sum: 1 },
+          totalAmountPaid: { $sum: '$amountPaid' }
+        }
+      },
+      { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 } }
+    ]);
+
+    return {
+      totalRevenue: dailyData.reduce((sum, day) => sum + day.totalRevenue, 0),
+      transactionCount: dailyData.reduce((sum, day) => sum + day.transactionCount, 0),
+      totalAmountPaid: dailyData.reduce((sum, day) => sum + day.totalAmountPaid, 0),
+      period: startDate && endDate ? this.formatPeriod(startDate, endDate) : targetDate.toISOString().split('T')[0],
+      breakdown: dailyData.map(day => ({
+        date: `${day._id.year}-${day._id.month.toString().padStart(2, '0')}-${day._id.day.toString().padStart(2, '0')}`,
+        revenue: day.totalRevenue,
+        transactions: day.transactionCount,
+        amountPaid: day.totalAmountPaid
+      }))
+    };
+  }
+
+  async getMonthlyRevenue(branchId?: string, month?: number, year?: number, startDate?: Date, endDate?: Date) {
+    const targetDate = new Date();
+    const targetMonth = month || (targetDate.getMonth() + 1);
+    const targetYear = year || targetDate.getFullYear();
+
+    let dateRange: { start: Date; end: Date };
+
+    if (startDate && endDate) {
+      dateRange = { start: startDate, end: endDate };
+    } else {
+      dateRange = {
+        start: new Date(targetYear, targetMonth - 1, 1),
+        end: new Date(targetYear, targetMonth, 1)
+      };
+    }
+
+    const filter: any = {
+      type: { $in: ['PURCHASE', 'PICKUP'] },
+      status: { $ne: 'CANCELLED' },
+      createdAt: { $gte: dateRange.start, $lt: dateRange.end }
+    };
+
+    if (branchId) {
+      filter.branchId = new Types.ObjectId(branchId);
+    }
+
+    const monthlyData = await this.transactionModel.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$createdAt' },
+            month: { $month: '$createdAt' }
+          },
+          totalRevenue: { $sum: '$total' },
+          transactionCount: { $sum: 1 },
+          totalAmountPaid: { $sum: '$amountPaid' }
+        }
+      },
+      { $sort: { '_id.year': 1, '_id.month': 1 } }
+    ]);
+
+    return {
+      totalRevenue: monthlyData.reduce((sum, month) => sum + month.totalRevenue, 0),
+      transactionCount: monthlyData.reduce((sum, month) => sum + month.transactionCount, 0),
+      totalAmountPaid: monthlyData.reduce((sum, month) => sum + month.totalAmountPaid, 0),
+      period: startDate && endDate ? this.formatPeriod(startDate, endDate) : `${targetYear}-${targetMonth.toString().padStart(2, '0')}`,
+      breakdown: monthlyData.map(month => ({
+        month: `${month._id.year}-${month._id.month.toString().padStart(2, '0')}`,
+        revenue: month.totalRevenue,
+        transactions: month.transactionCount,
+        amountPaid: month.totalAmountPaid
+      }))
+    };
+  }
+
+  async getYearlyRevenue(branchId?: string, year?: number, startDate?: Date, endDate?: Date) {
+    const targetYear = year || new Date().getFullYear();
+
+    let dateRange: { start: Date; end: Date };
+
+    if (startDate && endDate) {
+      dateRange = { start: startDate, end: endDate };
+    } else {
+      dateRange = {
+        start: new Date(targetYear, 0, 1),
+        end: new Date(targetYear + 1, 0, 1)
+      };
+    }
+
+    const filter: any = {
+      type: { $in: ['PURCHASE', 'PICKUP'] },
+      status: { $ne: 'CANCELLED' },
+      createdAt: { $gte: dateRange.start, $lt: dateRange.end }
+    };
+
+    if (branchId) {
+      filter.branchId = new Types.ObjectId(branchId);
+    }
+
+    const yearlyData = await this.transactionModel.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: { year: { $year: '$createdAt' } },
+          totalRevenue: { $sum: '$total' },
+          transactionCount: { $sum: 1 },
+          totalAmountPaid: { $sum: '$amountPaid' }
+        }
+      },
+      { $sort: { '_id.year': 1 } }
+    ]);
+
+    return {
+      totalRevenue: yearlyData.reduce((sum, year) => sum + year.totalRevenue, 0),
+      transactionCount: yearlyData.reduce((sum, year) => sum + year.transactionCount, 0),
+      totalAmountPaid: yearlyData.reduce((sum, year) => sum + year.totalAmountPaid, 0),
+      period: startDate && endDate ? this.formatPeriod(startDate, endDate) : targetYear.toString(),
+      breakdown: yearlyData.map(year => ({
+        year: year._id.year.toString(),
+        revenue: year.totalRevenue,
+        transactions: year.transactionCount,
+        amountPaid: year.totalAmountPaid
+      }))
+    };
+  }
+
+  private formatPeriod(startDate?: Date, endDate?: Date): string {
+    if (startDate && endDate) {
+      return `${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`;
+    }
+    if (startDate) {
+      return `From ${startDate.toISOString().split('T')[0]}`;
+    }
+    if (endDate) {
+      return `Until ${endDate.toISOString().split('T')[0]}`;
+    }
+    return 'All time';
+  }
 }

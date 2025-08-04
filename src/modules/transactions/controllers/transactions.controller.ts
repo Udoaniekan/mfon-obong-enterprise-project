@@ -8,7 +8,9 @@ import {
   Query,
   UseGuards,
   Request,
+  BadRequestException,
 } from '@nestjs/common';
+import { Type } from 'class-transformer';
 import { TransactionsService } from '../services/transactions.service';
 import {
   CreateTransactionDto,
@@ -107,5 +109,136 @@ export class TransactionsController {
   @Patch(':id/waybill')
   async assignWaybillNumber(@Param('id') id: string): Promise<any> {
     return this.transactionsService.assignWaybillNumber(id);
+  }
+
+  // Revenue Analytics Endpoints
+  @Get('revenue/total')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER, UserRole.ADMIN)
+  async getTotalRevenue(
+    @Request() req,
+    @Query('branchId') branchId?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const effectiveBranchId = this.getEffectiveBranchId(req.user, branchId);
+    const parsedStartDate = startDate ? new Date(startDate) : undefined;
+    const parsedEndDate = endDate ? new Date(endDate) : undefined;
+
+    this.validateDateRange(parsedStartDate, parsedEndDate);
+
+    return this.transactionsService.getTotalRevenue(
+      effectiveBranchId,
+      parsedStartDate,
+      parsedEndDate,
+    );
+  }
+
+  @Get('revenue/daily')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER, UserRole.ADMIN)
+  async getDailyRevenue(
+    @Request() req,
+    @Query('branchId') branchId?: string,
+    @Query('date') date?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const effectiveBranchId = this.getEffectiveBranchId(req.user, branchId);
+    const parsedDate = date ? new Date(date) : undefined;
+    const parsedStartDate = startDate ? new Date(startDate) : undefined;
+    const parsedEndDate = endDate ? new Date(endDate) : undefined;
+
+    this.validateDateRange(parsedStartDate, parsedEndDate);
+
+    return this.transactionsService.getDailyRevenue(
+      effectiveBranchId,
+      parsedDate,
+      parsedStartDate,
+      parsedEndDate,
+    );
+  }
+
+  @Get('revenue/monthly')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER, UserRole.ADMIN)
+  async getMonthlyRevenue(
+    @Request() req,
+    @Query('branchId') branchId?: string,
+    @Query('month') month?: string,
+    @Query('year') year?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const effectiveBranchId = this.getEffectiveBranchId(req.user, branchId);
+    const parsedMonth = month ? parseInt(month) : undefined;
+    const parsedYear = year ? parseInt(year) : undefined;
+    const parsedStartDate = startDate ? new Date(startDate) : undefined;
+    const parsedEndDate = endDate ? new Date(endDate) : undefined;
+
+    if (parsedMonth && (parsedMonth < 1 || parsedMonth > 12)) {
+      throw new BadRequestException('Month must be between 1 and 12');
+    }
+
+    this.validateDateRange(parsedStartDate, parsedEndDate);
+
+    return this.transactionsService.getMonthlyRevenue(
+      effectiveBranchId,
+      parsedMonth,
+      parsedYear,
+      parsedStartDate,
+      parsedEndDate,
+    );
+  }
+
+  @Get('revenue/yearly')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER, UserRole.ADMIN)
+  async getYearlyRevenue(
+    @Request() req,
+    @Query('branchId') branchId?: string,
+    @Query('year') year?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const effectiveBranchId = this.getEffectiveBranchId(req.user, branchId);
+    const parsedYear = year ? parseInt(year) : undefined;
+    const parsedStartDate = startDate ? new Date(startDate) : undefined;
+    const parsedEndDate = endDate ? new Date(endDate) : undefined;
+
+    this.validateDateRange(parsedStartDate, parsedEndDate);
+
+    return this.transactionsService.getYearlyRevenue(
+      effectiveBranchId,
+      parsedYear,
+      parsedStartDate,
+      parsedEndDate,
+    );
+  }
+
+  // Helper methods for branch access control and validation
+  private getEffectiveBranchId(user: any, requestedBranchId?: string): string | undefined {
+    const userRole = user.role;
+    
+    // SUPER_ADMIN and MAINTAINER can access any branch
+    if (userRole === UserRole.SUPER_ADMIN || userRole === UserRole.MAINTAINER) {
+      return requestedBranchId;
+    }
+    
+    // ADMIN can only access their own branch
+    if (userRole === UserRole.ADMIN) {
+      return user.branchId?.toString();
+    }
+
+    // Default: no branch restriction (shouldn't reach here due to @Roles decorator)
+    return undefined;
+  }
+
+  private validateDateRange(startDate?: Date, endDate?: Date): void {
+    if (startDate && endDate && startDate > endDate) {
+      throw new BadRequestException('Start date cannot be after end date');
+    }
+    if (startDate && isNaN(startDate.getTime())) {
+      throw new BadRequestException('Invalid start date format');
+    }
+    if (endDate && isNaN(endDate.getTime())) {
+      throw new BadRequestException('Invalid end date format');
+    }
   }
 }
