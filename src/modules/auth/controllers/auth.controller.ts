@@ -1,6 +1,7 @@
 import { Controller, Post, Body, Request, UseGuards } from '@nestjs/common';
 import { AuthService } from '../services/auth.service';
 import { OtpRequestDto, OtpVerifyDto } from '../dto/otp-request.dto';
+import { RefreshTokenDto } from '../dto/auth.dto';
 import { AuthGuard } from '@nestjs/passport';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 
@@ -31,6 +32,12 @@ export class AuthController {
       dto.otp,
       dto.newPassword,
     );
+  }
+
+  @Post('/refresh')
+  async refresh(@Body() refreshTokenDto: RefreshTokenDto, @Request() req) {
+    const userAgent = req.headers['user-agent'];
+    return this.authService.refreshToken(refreshTokenDto.refresh_token, userAgent);
   }
 
   @UseGuards(JwtAuthGuard)

@@ -291,4 +291,62 @@ export class ClientsService {
       currentBalance,
     };
   }
+
+  async blockClient(
+    id: string,
+    currentUser?: UserDocument,
+  ): Promise<ClientDocument> {
+    const client = await this.findById(id, currentUser);
+    
+    if (!client.isActive) {
+      throw new BadRequestException('Client is already blocked');
+    }
+
+    client.isActive = false;
+    const savedClient = await client.save();
+
+    // Log client block activity
+    try {
+      await this.systemActivityLogService.createLog({
+        action: 'CLIENT_BLOCKED',
+        details: `Client blocked: ${savedClient.name} (${savedClient.phone})`,
+        performedBy: currentUser?.email || 'System',
+        role: currentUser?.role || 'STAFF',
+        device: 'System',
+      });
+    } catch (logError) {
+      console.error('Failed to log client block:', logError);
+    }
+
+    return savedClient;
+  }
+
+  async unblockClient(
+    id: string,
+    currentUser?: UserDocument,
+  ): Promise<ClientDocument> {
+    const client = await this.findById(id, currentUser);
+    
+    if (client.isActive) {
+      throw new BadRequestException('Client is already active');
+    }
+
+    client.isActive = true;
+    const savedClient = await client.save();
+
+    // Log client unblock activity
+    try {
+      await this.systemActivityLogService.createLog({
+        action: 'CLIENT_UNBLOCKED',
+        details: `Client unblocked: ${savedClient.name} (${savedClient.phone})`,
+        performedBy: currentUser?.email || 'System',
+        role: currentUser?.role || 'STAFF',
+        device: 'System',
+      });
+    } catch (logError) {
+      console.error('Failed to log client unblock:', logError);
+    }
+
+    return savedClient;
+  }
 }

@@ -18,6 +18,7 @@ import * as bcrypt from 'bcrypt';
 @Injectable()
 export class AuthService {
   private blacklistedTokens = new Set<string>(); // In-memory token blacklist
+  private refreshTokens = new Map<string, { userId: string; email: string; expiresAt: number }>(); // In-memory refresh token storage
 
   constructor(
     private readonly usersService: UsersService,
@@ -145,8 +146,25 @@ export class AuthService {
       };
       console.log('JWT Payload:', payload);
 
-      const access_token = this.jwtService.sign(payload, { expiresIn: '24h' });
-      console.log('JWT Token generated successfully');
+      const access_token = this.jwtService.sign(payload, { expiresIn: '1h' });
+      
+      // Generate refresh token
+      const refreshPayload = {
+        email: user.email,
+        sub: user._id ? user._id.toString() : user.id,
+        type: 'refresh'
+      };
+      const refresh_token = this.jwtService.sign(refreshPayload, { expiresIn: '7d' });
+      
+      // Store refresh token in memory
+      const expiresAt = Date.now() + (7 * 24 * 60 * 60 * 1000); // 7 days from now
+      this.refreshTokens.set(refresh_token, {
+        userId: refreshPayload.sub,
+        email: refreshPayload.email,
+        expiresAt
+      });
+      
+      console.log('Access and refresh tokens generated successfully');
 
       // Log successful login activity
       try {
@@ -165,6 +183,7 @@ export class AuthService {
       // Direct format, not nested inside data property
       return {
         access_token,
+        refresh_token,
         user: {
           id: payload.sub,
           email: payload.email,
@@ -215,5 +234,135 @@ export class AuthService {
 
   isTokenBlacklisted(token: string): boolean {
     return this.blacklistedTokens.has(token);
+  }
+
+  // Refresh Token Methods
+  async refreshToken(refreshToken: string, userAgent?: string) {
+    try {
+      // Clean up expired refresh tokens first
+      this.cleanupExpiredRefreshTokens();
+
+      // Check if refresh token exists in memory
+      const tokenData = this.refreshTokens.get(refreshToken);
+      if (!tokenData) {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+
+      // Check if token is expired
+      if (Date.now() > tokenData.expiresAt) {
+        this.refreshTokens.delete(refreshToken);
+        throw new UnauthorizedException('Refresh token expired');
+      }
+
+      // Verify JWT signature
+      let decodedToken;
+      try {
+        decodedToken = this.jwtService.verify(refreshToken);
+      } catch (error) {
+        this.refreshTokens.delete(refreshToken);
+        throw new UnauthorizedException('Invalid refresh token signature');
+      }
+
+      // Validate token type
+      if (decodedToken.type !== 'refresh') {
+        throw new UnauthorizedException('Invalid token type');
+      }
+
+      // Get fresh user data
+      const user = await this.usersService.findByEmail(tokenData.email);
+      if (!user || !user.isActive) {
+        this.refreshTokens.delete(refreshToken);
+        throw new UnauthorizedException('User not found or inactive');
+      }
+
+      // Generate new access token
+      const payload = {
+        email: user.email,
+        sub: user._id.toString(),
+        role: user.role,
+        name: user.name,
+        branch: user.branch,
+      };
+      const access_token = this.jwtService.sign(payload, { expiresIn: '1h' });
+
+      // Generate new refresh token (token rotation for security)
+      const newRefreshPayload = {
+        email: user.email,
+        sub: user._id.toString(),
+        type: 'refresh'
+      };
+      const new_refresh_token = this.jwtService.sign(newRefreshPayload, { expiresIn: '7d' });
+
+      // Remove old refresh token and store new one
+      this.refreshTokens.delete(refreshToken);
+      const newExpiresAt = Date.now() + (7 * 24 * 60 * 60 * 1000);
+      this.refreshTokens.set(new_refresh_token, {
+        userId: newRefreshPayload.sub,
+        email: newRefreshPayload.email,
+        expiresAt: newExpiresAt
+      });
+
+      // Log token refresh activity
+      try {
+        await this.systemActivityLogService.createLog({
+          action: 'TOKEN_REFRESH',
+          details: `Access token refreshed successfully`,
+          performedBy: user.email,
+          role: user.role,
+          device: extractDeviceInfo(userAgent || ''),
+        });
+      } catch (logError) {
+        console.error('Failed to log token refresh activity:', logError);
+        // Don't fail refresh if logging fails
+      }
+
+      return {
+        access_token,
+        refresh_token: new_refresh_token,
+        user: {
+          id: payload.sub,
+          email: payload.email,
+          role: payload.role,
+          name: payload.name,
+          branch: payload.branch,
+        },
+      };
+    } catch (error) {
+      console.error('Error refreshing token:', error);
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+      throw new UnauthorizedException('Token refresh failed');
+    }
+  }
+
+  // Clean up expired refresh tokens from memory
+  private cleanupExpiredRefreshTokens(): void {
+    const now = Date.now();
+    for (const [token, data] of this.refreshTokens.entries()) {
+      if (now > data.expiresAt) {
+        this.refreshTokens.delete(token);
+      }
+    }
+  }
+
+  // Get refresh token stats (for monitoring/debugging)
+  getRefreshTokenStats(): { total: number; expired: number } {
+    const now = Date.now();
+    let expired = 0;
+    const total = this.refreshTokens.size;
+
+    for (const [token, data] of this.refreshTokens.entries()) {
+      if (now > data.expiresAt) {
+        expired++;
+      }
+    }
+
+    return { total, expired };
+  }
+
+  // Revoke refresh token (for logout)
+  revokeRefreshToken(refreshToken: string): void {
+    this.refreshTokens.delete(refreshToken);
   }
 }

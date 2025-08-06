@@ -105,7 +105,7 @@ export class ProductsController {
   }
 
   @Delete(':id/delete')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER, UserRole.ADMIN)
   async hardRemove(@Param('id') id: string, @Request() req): Promise<void> {
     return this.productsService.hardRemove(id, req.user);
   }

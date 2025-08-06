@@ -22,6 +22,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { UserRole } from '../../../common/enums';
 import { Roles } from 'src/decorators/roles.decorators';
+import { use } from 'passport';
 
 @Controller('clients')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -140,8 +141,20 @@ export class ClientsController {
     return this.clientsService.getLifetimeValue(id, req.user);
   }
 
+  @Patch(':id/block')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER)
+  async blockClient(@Param('id') id: string, @Request() req): Promise<Client> {
+    return this.clientsService.blockClient(id, req.user);
+  }
+
+  @Patch(':id/unblock')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER)
+  async unblockClient(@Param('id') id: string, @Request() req): Promise<Client> {
+    return this.clientsService.unblockClient(id, req.user);
+  }
+
   @Delete(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER, UserRole.ADMIN)
   async remove(@Param('id') id: string, @Request() req): Promise<void> {
     return this.clientsService.remove(id, req.user);
   }
