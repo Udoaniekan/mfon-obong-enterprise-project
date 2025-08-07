@@ -6,8 +6,20 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Enable CORS
-  app.enableCors();
+  // Enable CORS with proper configuration
+  app.enableCors({
+    origin: [
+      'http://localhost:3000',
+      'http://localhost:3001', 
+      'http://localhost:4200',
+      'http://localhost:5173',
+      'https://your-frontend-domain.com', // Replace with your actual frontend domain
+      // Add your production frontend domain here
+    ],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+  });
 
   // Global prefix
   app.setGlobalPrefix('api');
