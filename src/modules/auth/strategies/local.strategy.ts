@@ -28,6 +28,7 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
         role: user.role,
         name: user.name,
         branch: user.branch,
+        branchId: user.branchId,
       };
     } catch (error) {
       console.error('Validation error:', error);

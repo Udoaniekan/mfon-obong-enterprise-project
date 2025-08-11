@@ -164,9 +164,7 @@ export class UsersService {
   }
   async findByEmail(email: string): Promise<UserDocument> {
     const user = await this.userModel
-      .findOne({ email })
-      .populate('branchId', 'name');
-    console.log('Found user:', JSON.stringify(user, null, 2));
+      .findOne({ email });
     return user;
   }
 

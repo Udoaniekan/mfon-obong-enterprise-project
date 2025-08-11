@@ -60,7 +60,7 @@ export class AuthService {
         device: 'System',
       });
     } catch (logError) {
-      console.error('Failed to log OTP request:', logError);
+      // Don't fail if logging fails
     }
 
     return { message: 'OTP sent to MAINTAINER email' };
@@ -100,7 +100,7 @@ export class AuthService {
         device: 'System',
       });
     } catch (logError) {
-      console.error('Failed to log OTP verification:', logError);
+      // Don't fail if logging fails
     }
 
     return { message: 'Password reset successfully' };
@@ -108,36 +108,28 @@ export class AuthService {
 
   async validateUser(email: string, password: string): Promise<any> {
     try {
-      console.log('Attempting to validate user:', email);
-
       const user = await this.usersService.findByEmail(email);
       if (!user) {
-        console.log('User not found:', email);
         throw new UnauthorizedException('User not found');
       }
 
-      console.log('User found, validating password');
       const isPasswordValid = await bcrypt.compare(password, user.password);
       if (!isPasswordValid) {
-        console.log('Invalid password for user:', email);
         throw new UnauthorizedException('Invalid password');
       }
-      console.log('Password valid, login successful');
+      
       const { password: _, ...result } = user.toJSON();
-      console.log('User data before return:', result);
       return {
         ...result,
         branch: result.branch || 'HEAD_OFFICE', // Provide default for existing users
-        branchId: result.branchId, // Include branchId in the returned user data
+        branchId: user.branchId ? user.branchId.toString() : null, // Convert ObjectId to string
       };
     } catch (error) {
-      console.error('Login error:', error.message);
       throw new UnauthorizedException(error.message);
     }
   }
   async login(user: any, userAgent?: string) {
     try {
-      console.log('Creating JWT payload for user:', user.email);
       const payload = {
         email: user.email,
         sub: user._id ? user._id.toString() : user.id,
@@ -146,7 +138,6 @@ export class AuthService {
         branch: user.branch,
         branchId: user.branchId,
       };
-      console.log('JWT Payload:', payload);
 
       const access_token = this.jwtService.sign(payload, { expiresIn: '1h' });
       
@@ -165,8 +156,6 @@ export class AuthService {
         email: refreshPayload.email,
         expiresAt
       });
-      
-      console.log('Access and refresh tokens generated successfully');
 
       // Log successful login activity
       try {
@@ -178,7 +167,6 @@ export class AuthService {
           device: extractDeviceInfo(userAgent || ''),
         });
       } catch (logError) {
-        console.error('Failed to log login activity:', logError);
         // Don't fail login if logging fails
       }
 
@@ -196,7 +184,6 @@ export class AuthService {
         },
       };
     } catch (error) {
-      console.error('Error generating JWT token:', error);
       throw new Error(
         'Failed to generate authentication token: ' + error.message,
       );
@@ -224,13 +211,11 @@ export class AuthService {
           device: extractDeviceInfo(userAgent || ''),
         });
       } catch (logError) {
-        console.error('Failed to log logout activity:', logError);
         // Don't fail logout if logging fails
       }
 
       return { message: 'Logout successful' };
     } catch (error) {
-      console.error('Error during logout:', error);
       throw new Error('Logout failed: ' + error.message);
     }
   }
@@ -285,7 +270,7 @@ export class AuthService {
         role: user.role,
         name: user.name,
         branch: user.branch,
-        branchId: user.branchId,
+        branchId: user.branchId ? user.branchId.toString() : null,
       };
       const access_token = this.jwtService.sign(payload, { expiresIn: '1h' });
 
@@ -316,7 +301,6 @@ export class AuthService {
           device: extractDeviceInfo(userAgent || ''),
         });
       } catch (logError) {
-        console.error('Failed to log token refresh activity:', logError);
         // Don't fail refresh if logging fails
       }
 
@@ -333,7 +317,6 @@ export class AuthService {
         },
       };
     } catch (error) {
-      console.error('Error refreshing token:', error);
       if (error instanceof UnauthorizedException) {
         throw error;
       }
