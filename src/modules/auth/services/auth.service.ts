@@ -128,6 +128,7 @@ export class AuthService {
       return {
         ...result,
         branch: result.branch || 'HEAD_OFFICE', // Provide default for existing users
+        branchId: result.branchId, // Include branchId in the returned user data
       };
     } catch (error) {
       console.error('Login error:', error.message);
@@ -143,6 +144,7 @@ export class AuthService {
         role: user.role,
         name: user.name,
         branch: user.branch,
+        branchId: user.branchId,
       };
       console.log('JWT Payload:', payload);
 
@@ -190,6 +192,7 @@ export class AuthService {
           role: payload.role,
           name: payload.name,
           branch: payload.branch,
+          branchId: payload.branchId,
         },
       };
     } catch (error) {
@@ -282,6 +285,7 @@ export class AuthService {
         role: user.role,
         name: user.name,
         branch: user.branch,
+        branchId: user.branchId,
       };
       const access_token = this.jwtService.sign(payload, { expiresIn: '1h' });
 
@@ -325,6 +329,7 @@ export class AuthService {
           role: payload.role,
           name: payload.name,
           branch: payload.branch,
+          branchId: payload.branchId,
         },
       };
     } catch (error) {
