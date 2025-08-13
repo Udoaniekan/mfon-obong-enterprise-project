@@ -267,8 +267,13 @@ export class UsersService {
     if (!isMatch) {
       throw new ConflictException('Wrong password');
     }
-    user.password = await bcrypt.hash(newPassword, 10);
-    await user.save();
+    
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    
+    // Update only the password field to avoid validation issues
+    await this.userModel.findByIdAndUpdate(userId, { 
+      password: hashedPassword 
+    });
 
     // Log password update activity
     try {
@@ -280,7 +285,7 @@ export class UsersService {
         device: 'System',
       });
     } catch (logError) {
-      console.error('Failed to log password update:', logError);
+      // Don't fail if logging fails
     }
   }
 
@@ -289,8 +294,13 @@ export class UsersService {
     if (!user) {
       throw new NotFoundException('User not found');
     }
-    user.password = await bcrypt.hash(newPassword, 10);
-    await user.save();
+    
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    
+    // Update only the password field to avoid validation issues
+    await this.userModel.findByIdAndUpdate(userId, { 
+      password: hashedPassword 
+    });
 
     // Log password reset activity
     try {
@@ -302,7 +312,7 @@ export class UsersService {
         device: 'System',
       });
     } catch (logError) {
-      console.error('Failed to log password reset:', logError);
+      // Don't fail if logging fails
     }
   }
 
