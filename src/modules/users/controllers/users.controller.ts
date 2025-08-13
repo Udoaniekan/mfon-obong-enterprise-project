@@ -15,6 +15,7 @@ import { UsersService } from '../services/users.service';
 import { CreateUserDto, UpdateUserDto } from '../dto/user.dto';
 import { BlockUserDto } from '../dto/block-user.dto';
 import { ForgotPasswordDto } from '../dto/forgot-password.dto';
+import { UpdatePasswordDto } from '../dto/update-password.dto';
 // ...existing code...
 // ...existing code...
 import { User } from '../schemas/user.schema';
@@ -105,7 +106,7 @@ export class UsersController {
   @Patch(':id/update-password')
   async updatePassword(
     @Param('id') id: string,
-    @Body() body: { previousPassword: string; newPassword: string },
+    @Body() updatePasswordDto: UpdatePasswordDto,
     @Request() req,
   ): Promise<{ message: string }> {
     // Only allow users to update their own password or MAINTAINER
@@ -114,8 +115,8 @@ export class UsersController {
     }
     await this.usersService.updatePassword(
       id,
-      body.previousPassword,
-      body.newPassword,
+      updatePasswordDto.previousPassword,
+      updatePasswordDto.newPassword,
     );
     return { message: 'Password updated successfully' };
   }
