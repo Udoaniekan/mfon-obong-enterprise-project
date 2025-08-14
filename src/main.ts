@@ -13,8 +13,8 @@ async function bootstrap() {
       'http://localhost:3001', 
       'http://localhost:4200',
       'http://localhost:5173',
-      'https://your-frontend-domain.com', // Replace with your actual frontend domain
-      // Add your production frontend domain here
+      'https://frontend-six-liard-24.vercel.app',
+      // Add more production frontend domains here as needed
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
