@@ -29,15 +29,8 @@ export class ProductsService {
     createProductDto: CreateProductDto,
     currentUser?: UserDocument,
   ): Promise<Product> {
-    // Use current user's branchId if not provided by SUPER_ADMIN or MAINTAINER
-    let branchId = createProductDto.branchId;
-    if (
-      !branchId ||
-      (currentUser &&
-        ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role))
-    ) {
-      branchId = currentUser?.branchId?.toString();
-    }
+    // branchId is now compulsory from DTO - use the provided branchId
+    const branchId = createProductDto.branchId;
 
     // Validate that the unit matches the category
     const category = await this.categoriesService.findById(
@@ -83,10 +76,15 @@ export class ProductsService {
         device: 'System',
       });
     } catch (logError) {
-      console.error('Failed to log product creation:', logError);
+      // Don't fail if logging fails
     }
 
-    return savedProduct;
+    // Return the product with populated branchId information
+    return this.productModel
+      .findById(savedProduct._id)
+      .populate('categoryId', 'name units')
+      .populate('branchId', 'name')
+      .exec();
   }
 
   async findAll(
