@@ -57,6 +57,47 @@ export class TransactionsController {
     return this.transactionsService.findAll(query);
   }
 
+  @Get('branch/:branchId')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.MAINTAINER,
+    UserRole.STAFF,
+  )
+  async findByBranch(@Param('branchId') branchId: string, @Request() req): Promise<Transaction[]> {
+    // Check permissions: ADMIN can only access their own branch
+    if (req.user.role === UserRole.ADMIN && req.user.branchId !== branchId) {
+      throw new BadRequestException('Forbidden: ADMIN can only access transactions from their own branch');
+    }
+    return this.transactionsService.findByBranchId(branchId);
+  }
+
+  @Get('user/:userId')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.MAINTAINER,
+    UserRole.STAFF,
+  )
+  async findByUser(@Param('userId') userId: string, @Request() req): Promise<Transaction[]> {
+    // Check permissions: Non-privileged users can only access their own transactions
+    if (![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(req.user.role) && req.user.userId !== userId) {
+      throw new BadRequestException('Forbidden: You can only access your own transactions');
+    }
+    return this.transactionsService.findByUserId(userId);
+  }
+
+  @Get('client/:clientId')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.MAINTAINER,
+    UserRole.STAFF,
+  )
+  async findByClient(@Param('clientId') clientId: string): Promise<Transaction[]> {
+    return this.transactionsService.findByClientId(clientId);
+  }
+
   @Get(':id')
   @Roles(
     UserRole.SUPER_ADMIN,

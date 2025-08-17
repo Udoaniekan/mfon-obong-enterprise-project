@@ -252,6 +252,36 @@ export class TransactionsService {
     return transaction;
   }
 
+  async findByBranchId(branchId: string): Promise<Transaction[]> {
+    const transactions = await this.transactionModel
+      .find({ branchId })
+      .populate('clientId', 'name phone')
+      .populate('userId', 'name')
+      .sort({ createdAt: -1 });
+
+    return transactions;
+  }
+
+  async findByUserId(userId: string): Promise<Transaction[]> {
+    const transactions = await this.transactionModel
+      .find({ userId: new Types.ObjectId(userId) })
+      .populate('clientId', 'name phone')
+      .populate('userId', 'name')
+      .sort({ createdAt: -1 });
+
+    return transactions;
+  }
+
+  async findByClientId(clientId: string): Promise<Transaction[]> {
+    const transactions = await this.transactionModel
+      .find({ clientId: new Types.ObjectId(clientId) })
+      .populate('clientId', 'name phone')
+      .populate('userId', 'name')
+      .sort({ createdAt: -1 });
+
+    return transactions;
+  }
+
   async update(
     id: string,
     updateTransactionDto: UpdateTransactionDto,
