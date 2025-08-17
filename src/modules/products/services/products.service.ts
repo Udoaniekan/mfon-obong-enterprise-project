@@ -368,6 +368,15 @@ export class ProductsService {
       .exec();
   }
 
+  async findByBranchId(branchId: string): Promise<ProductDocument[]> {
+    return this.productModel
+      .find({ branchId, isActive: true })
+      .populate('categoryId', 'name units')
+      .populate('branchId', 'name')
+      .sort({ createdAt: -1 })
+      .exec();
+  }
+
   calculatePrice(product: Product | ProductDocument, quantity: number): number {
     return quantity * product.unitPrice;
   }

@@ -8,6 +8,7 @@ import {
   Delete,
   UseGuards,
   Request,
+  BadRequestException,
 } from '@nestjs/common';
 import { ProductsService } from '../services/products.service';
 import {
@@ -51,6 +52,21 @@ export class ProductsController {
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER)
   async getLowStockProducts(@Request() req): Promise<Product[]> {
     return this.productsService.getLowStockProducts(req.user);
+  }
+
+  @Get('branch/:branchId')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.MAINTAINER,
+    UserRole.STAFF,
+  )
+  async findByBranch(@Param('branchId') branchId: string, @Request() req): Promise<Product[]> {
+    // Check permissions: ADMIN can only access their own branch
+    if (req.user.role === UserRole.ADMIN && req.user.branchId !== branchId) {
+      throw new BadRequestException('Forbidden: ADMIN can only access products from their own branch');
+    }
+    return this.productsService.findByBranchId(branchId);
   }
 
   @Get(':id')
