@@ -63,9 +63,15 @@ export class ProductsController {
   )
   async findByBranch(@Param('branchId') branchId: string, @Request() req): Promise<Product[]> {
     // Check permissions: ADMIN can only access their own branch
-    if (req.user.role === UserRole.ADMIN && req.user.branchId !== branchId) {
-      throw new BadRequestException('Forbidden: ADMIN can only access products from their own branch');
+    if (req.user.role === UserRole.ADMIN) {
+      if (!req.user.branchId) {
+        throw new BadRequestException('User branchId is missing from JWT token. Please login again to get updated token.');
+      }
+      if (req.user.branchId.toString() !== branchId) {
+        throw new BadRequestException('Forbidden: ADMIN can only access products from their own branch');
+      }
     }
+    
     return this.productsService.findByBranchId(branchId);
   }
 

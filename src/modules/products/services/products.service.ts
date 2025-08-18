@@ -367,12 +367,24 @@ export class ProductsService {
   }
 
   async findByBranchId(branchId: string): Promise<ProductDocument[]> {
-    return this.productModel
-      .find({ branchId: new Types.ObjectId(branchId), isActive: true })
-      .populate('categoryId', 'name units')
-      .populate('branchId', 'name')
-      .sort({ createdAt: -1 })
-      .exec();
+    try {
+      // Validate if branchId is a valid ObjectId
+      if (!Types.ObjectId.isValid(branchId)) {
+        throw new BadRequestException(`Invalid branchId format: ${branchId}`);
+      }
+
+      return this.productModel
+        .find({ branchId: new Types.ObjectId(branchId), isActive: true })
+        .populate('categoryId', 'name units')
+        .populate('branchId', 'name')
+        .sort({ createdAt: -1 })
+        .exec();
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(`Error finding products by branchId: ${error.message}`);
+    }
   }
 
   calculatePrice(product: Product | ProductDocument, quantity: number): number {
