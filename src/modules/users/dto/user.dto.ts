@@ -8,7 +8,6 @@ import {
   IsOptional,
   Matches,
 } from 'class-validator';
-import { Transform } from 'class-transformer';
 import { UserRole } from '../../../common/enums';
 
 export class CreateUserDto {

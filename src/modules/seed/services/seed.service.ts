@@ -43,7 +43,7 @@ export class SeedService {
     const superAdmin = {
       name: 'Super Admin',
       email: 'superadmin@example.com',
-      password: 'superadmin123',
+      password: 'Superadmin123!',
       phone: '+1234567890',
       address: 'Head Office, Sheelter Afrique',
       role: UserRole.SUPER_ADMIN,
@@ -175,9 +175,9 @@ export class SeedService {
     }
 
     const maintainer = {
-      name: 'System Maintainer',
-      email: 'maintainer@example.com',
-      password: 'maintainer123',
+      name: 'Aniekan Udo',
+      email: 'aniekan50k@gmail.com',
+      password: 'Maintainer123!',
       phone: '+1234567891',
       address: 'IT Department, Sheelter Afrique',
       role: UserRole.MAINTAINER,

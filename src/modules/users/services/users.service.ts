@@ -4,6 +4,7 @@ import {
   Injectable,
   ConflictException,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -12,12 +13,14 @@ import { User, UserDocument } from '../schemas/user.schema';
 import { CreateUserDto, UpdateUserDto } from '../dto/user.dto';
 import { UserRole } from '../../../common/enums';
 import { SystemActivityLogService } from '../../system-activity-logs/services/system-activity-log.service';
+import { BranchesService } from '../../branches/services/branches.service';
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     private readonly systemActivityLogService: SystemActivityLogService,
+    private readonly branchesService: BranchesService,
   ) {}
   async blockUser(
     id: string,
@@ -91,11 +94,19 @@ export class UsersService {
       ...createUserDto,
       password: '[REDACTED]',
     });
-    const { email, password } = createUserDto;
+    const { email, password, branchId, branch } = createUserDto;
 
     const existingUser = await this.userModel.findOne({ email });
     if (existingUser) {
       throw new ConflictException('Email already exists');
+    }
+
+    // Validate that branch name matches branchId
+    const branchDocument = await this.branchesService.findById(branchId);
+    if (branchDocument.name !== branch) {
+      throw new BadRequestException(
+        `Branch name '${branch}' does not match the branch with ID '${branchId}'. Expected: '${branchDocument.name}'`
+      );
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -185,6 +196,31 @@ export class UsersService {
 
     if (updateUserDto.password) {
       updateUserDto.password = await bcrypt.hash(updateUserDto.password, 10);
+    }
+
+    // Validate branch name matches branchId if both are being updated
+    if (updateUserDto.branchId || updateUserDto.branch) {
+      const branchId = updateUserDto.branchId;
+      const branch = updateUserDto.branch;
+
+      if (branchId && branch) {
+        // Both branchId and branch are provided - validate they match
+        const branchDocument = await this.branchesService.findById(branchId);
+        if (branchDocument.name !== branch) {
+          throw new BadRequestException(
+            `Branch name '${branch}' does not match the branch with ID '${branchId}'. Expected: '${branchDocument.name}'`
+          );
+        }
+      } else if (branchId && !branch) {
+        // Only branchId provided - auto-set the correct branch name
+        const branchDocument = await this.branchesService.findById(branchId);
+        updateUserDto.branch = branchDocument.name;
+      } else if (!branchId && branch) {
+        // Only branch name provided - this is not allowed, need branchId too
+        throw new BadRequestException(
+          'When updating branch name, branchId must also be provided'
+        );
+      }
     }
 
     if (updateUserDto.branchId) {
