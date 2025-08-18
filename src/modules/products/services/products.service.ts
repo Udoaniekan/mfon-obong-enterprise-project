@@ -98,7 +98,7 @@ export class ProductsService {
       currentUser &&
       ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
     ) {
-      filter.branchId = currentUser.branchId;
+      filter.branchId = new Types.ObjectId(currentUser.branchId);
     }
 
     return this.productModel
@@ -119,7 +119,7 @@ export class ProductsService {
       currentUser &&
       ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
     ) {
-      filter.branchId = currentUser.branchId;
+      filter.branchId = new Types.ObjectId(currentUser.branchId);
     }
 
     const product = await this.productModel
@@ -212,7 +212,7 @@ export class ProductsService {
       currentUser &&
       ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
     ) {
-      filter.branchId = currentUser.branchId;
+      filter.branchId = new Types.ObjectId(currentUser.branchId);
     }
 
     // Get the product first to validate it exists
@@ -298,7 +298,7 @@ export class ProductsService {
       currentUser &&
       ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
     ) {
-      filter.branchId = currentUser.branchId;
+      filter.branchId = new Types.ObjectId(currentUser.branchId);
     }
 
     const result = await this.productModel.findOneAndDelete(filter);
@@ -335,7 +335,7 @@ export class ProductsService {
       currentUser &&
       ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
     ) {
-      filter.branchId = currentUser.branchId;
+      filter.branchId = new Types.ObjectId(currentUser.branchId);
     }
 
     return this.productModel
@@ -356,7 +356,7 @@ export class ProductsService {
       currentUser &&
       ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
     ) {
-      filter.branchId = currentUser.branchId;
+      filter.branchId = new Types.ObjectId(currentUser.branchId);
     }
 
     return this.productModel

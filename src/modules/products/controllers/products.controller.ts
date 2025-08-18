@@ -42,7 +42,6 @@ export class ProductsController {
     UserRole.SUPER_ADMIN,
     UserRole.ADMIN,
     UserRole.MAINTAINER,
-    UserRole.STAFF,
   )
   async findAll(@Request() req): Promise<Product[]> {
     return this.productsService.findAll(req.user);
@@ -62,13 +61,14 @@ export class ProductsController {
     UserRole.STAFF,
   )
   async findByBranch(@Param('branchId') branchId: string, @Request() req): Promise<Product[]> {
-    // Check permissions: ADMIN can only access their own branch
-    if (req.user.role === UserRole.ADMIN) {
+    // Check permissions: ADMIN and STAFF can only access their own branch
+    if (req.user.role === UserRole.ADMIN || req.user.role === UserRole.STAFF) {
       if (!req.user.branchId) {
         throw new BadRequestException('User branchId is missing from JWT token. Please login again to get updated token.');
       }
       if (req.user.branchId.toString() !== branchId) {
-        throw new BadRequestException('Forbidden: ADMIN can only access products from their own branch');
+        const userType = req.user.role === UserRole.ADMIN ? 'ADMIN' : 'STAFF';
+        throw new BadRequestException(`Forbidden: ${userType} can only access products from their own branch`);
       }
     }
     
@@ -83,6 +83,12 @@ export class ProductsController {
     UserRole.STAFF,
   )
   async findOne(@Param('id') id: string, @Request() req): Promise<Product> {
+    // STAFF can only access products in their own branch
+    if (req.user.role === UserRole.STAFF) {
+      if (!req.user.branchId) {
+        throw new BadRequestException('User branchId is missing from JWT token. Please login again to get updated token.');
+      }
+    }
     return this.productsService.findById(id, req.user);
   }
 
