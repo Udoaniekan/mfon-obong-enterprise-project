@@ -368,7 +368,7 @@ export class ProductsService {
 
   async findByBranchId(branchId: string): Promise<ProductDocument[]> {
     return this.productModel
-      .find({ branchId, isActive: true })
+      .find({ branchId: new Types.ObjectId(branchId), isActive: true })
       .populate('categoryId', 'name units')
       .populate('branchId', 'name')
       .sort({ createdAt: -1 })
