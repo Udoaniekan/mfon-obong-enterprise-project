@@ -62,7 +62,7 @@ export class ClientsService {
     query: QueryClientsDto,
     currentUser?: UserDocument,
   ): Promise<Client[]> {
-    const filter: any = {};
+    const filter: any = { isActive: true };
     if (query.search) {
       filter.$or = [
         { name: new RegExp(query.search, 'i') },
@@ -185,16 +185,20 @@ export class ClientsService {
   }
 
   async remove(id: string, currentUser?: UserDocument): Promise<void> {
-    const result = await this.clientModel.findByIdAndDelete(id);
-    if (!result) {
+    const client = await this.clientModel.findById(id);
+    if (!client) {
       throw new NotFoundException('Client not found');
     }
+
+    // Soft delete - set isActive to false
+    client.isActive = false;
+    await client.save();
 
     // Log client deletion activity
     try {
       await this.systemActivityLogService.createLog({
         action: 'CLIENT_DELETED',
-        details: `Client deleted: ${result.name} (${result.phone})`,
+        details: `Client deleted: ${client.name} (${client.phone})`,
         performedBy: currentUser?.email || 'System',
         role: currentUser?.role || 'ADMIN',
         device: 'System',

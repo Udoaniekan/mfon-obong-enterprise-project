@@ -134,14 +134,14 @@ export class UsersService {
     return savedUser;
   }
   async findAll(currentUser?: UserDocument): Promise<User[]> {
-    let filter = {};
+    let filter: any = { isActive: true };
 
     // Only SUPER_ADMIN and MAINTAINER can see all users
     if (
       currentUser &&
       ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
     ) {
-      filter = { branchId: currentUser.branchId };
+      filter = { branchId: currentUser.branchId, isActive: true };
     }
 
     const users = await this.userModel
@@ -271,16 +271,20 @@ export class UsersService {
       filter.branchId = currentUser.branchId;
     }
 
-    const result = await this.userModel.findOneAndDelete(filter);
-    if (!result) {
+    const user = await this.userModel.findOne(filter);
+    if (!user) {
       throw new NotFoundException('User not found');
     }
+
+    // Soft delete - set isActive to false
+    user.isActive = false;
+    await user.save();
 
     // Log user deletion activity
     try {
       await this.systemActivityLogService.createLog({
         action: 'USER_DELETED',
-        details: `User deleted: ${result.name} (${result.email}) - Role: ${result.role}`,
+        details: `User deleted: ${user.name} (${user.email}) - Role: ${user.role}`,
         performedBy: currentUser?.email || 'System',
         role: currentUser?.role || 'ADMIN',
         device: 'System',
