@@ -20,25 +20,14 @@ export class CategoriesService {
     createCategoryDto: CreateCategoryDto,
     currentUser?: UserDocument,
   ): Promise<CategoryDocument> {
-    // Use current user's branchId if not provided by SUPER_ADMIN or MAINTAINER
-    let branchId = createCategoryDto.branchId;
-    if (
-      !branchId ||
-      (currentUser &&
-        ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role))
-    ) {
-      branchId = currentUser?.branchId?.toString();
-    }
-
     try {
       const category = new this.categoryModel({
         ...createCategoryDto,
-        branchId: new Types.ObjectId(branchId),
       });
       return await category.save();
     } catch (error) {
       if (error.code === 11000) {
-        throw new ConflictException('Category already exists in this branch');
+        throw new ConflictException('Category name already exists');
       }
       throw error;
     }
@@ -50,15 +39,8 @@ export class CategoriesService {
   ): Promise<CategoryDocument[]> {
     const filter: any = includeInactive ? {} : { isActive: true };
 
-    // Only SUPER_ADMIN and MAINTAINER can see all categories
-    if (
-      currentUser &&
-      ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
-    ) {
-      filter.branchId = currentUser.branchId;
-    }
-
-    return this.categoryModel.find(filter).populate('branchId', 'name').exec();
+    // Categories are global - all users can see all categories
+    return this.categoryModel.find(filter).exec();
   }
   async findById(
     id: string,
@@ -75,19 +57,8 @@ export class CategoriesService {
         }
       }
 
-      const filter: any = { _id: id };
-
-      // Only SUPER_ADMIN and MAINTAINER can access categories from other branches
-      if (
-        currentUser &&
-        ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
-      ) {
-        filter.branchId = currentUser.branchId;
-      }
-
-      const category = await this.categoryModel
-        .findOne(filter)
-        .populate('branchId', 'name');
+      // Categories are global - no branch filtering needed
+      const category = await this.categoryModel.findById(id);
 
       if (!category) {
         throw new NotFoundException('Category not found');
@@ -103,20 +74,8 @@ export class CategoriesService {
     name: string,
     currentUser?: UserDocument,
   ): Promise<CategoryDocument | null> {
-    const filter: any = { name };
-
-    // Only SUPER_ADMIN and MAINTAINER can search across all branches
-    if (
-      currentUser &&
-      ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
-    ) {
-      filter.branchId = currentUser.branchId;
-    }
-
-    return this.categoryModel
-      .findOne(filter)
-      .populate('branchId', 'name')
-      .exec();
+    // Categories are global - search by name only
+    return this.categoryModel.findOne({ name }).exec();
   }
 
   async update(
@@ -126,28 +85,12 @@ export class CategoriesService {
   ): Promise<CategoryDocument> {
     const category = await this.findById(id, currentUser);
 
-    // Handle branchId update for SUPER_ADMIN and MAINTAINER only
-    if (updateCategoryDto.branchId) {
-      if (
-        currentUser &&
-        ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
-      ) {
-        delete updateCategoryDto.branchId; // Remove branchId if user doesn't have permission
-      } else {
-        updateCategoryDto.branchId = new Types.ObjectId(
-          updateCategoryDto.branchId,
-        ) as any;
-      }
-    }
-
     try {
       Object.assign(category, updateCategoryDto);
       return await category.save();
     } catch (error) {
       if (error.code === 11000) {
-        throw new ConflictException(
-          'Category name already exists in this branch',
-        );
+        throw new ConflictException('Category name already exists');
       }
       throw error;
     }

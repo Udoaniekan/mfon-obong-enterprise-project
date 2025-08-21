@@ -5,7 +5,7 @@ export type CategoryDocument = Category & Document;
 
 @Schema({ timestamps: true })
 export class Category {
-  @Prop({ required: true })
+  @Prop({ required: true, unique: true })
   name: string;
 
   @Prop({ required: true })
@@ -16,9 +16,6 @@ export class Category {
 
   @Prop()
   description?: string;
-
-  @Prop({ required: true, type: Types.ObjectId, ref: 'Branch' })
-  branchId: Types.ObjectId;
 }
 
 export const CategorySchema = SchemaFactory.createForClass(Category);
