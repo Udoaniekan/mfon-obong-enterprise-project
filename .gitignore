@@ -54,3 +54,9 @@ pids
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Test files (exclude from commits)
+*test*.js
+auto-login-test.js
+simple-realtime-test.js
+get-test-data.js

@@ -14,6 +14,8 @@ import { ClientsService } from '../../clients/services/clients.service';
 import { ProductsService } from '../../products/services/products.service';
 import { StockOperation } from '../../products/dto/product.dto';
 import { SystemActivityLogService } from '../../system-activity-logs/services/system-activity-log.service';
+import { RealtimeEventService } from '../../websocket/realtime-event.service';
+import { UserRole } from '../../../common/enums';
 import {
   CreateTransactionDto,
   UpdateTransactionDto,
@@ -31,6 +33,7 @@ export class TransactionsService {
     private readonly clientsService: ClientsService,
     private readonly productsService: ProductsService,
     private readonly systemActivityLogService: SystemActivityLogService,
+    private readonly realtimeEventService: RealtimeEventService,
   ) {}
 
   async create(
@@ -45,6 +48,14 @@ export class TransactionsService {
       const client = await this.clientsService.findById(
         createTransactionDto.clientId,
       );
+      
+      // Check if client is blocked/suspended
+      if (!client.isActive) {
+        throw new BadRequestException(
+          `Transaction blocked: Client "${client.name}" is currently suspended. Please contact admin to reactivate this client.`
+        );
+      }
+      
       clientId = (client as any)._id;
     } else if (
       createTransactionDto.walkInClient &&
@@ -195,6 +206,28 @@ export class TransactionsService {
     } catch (logError) {
       console.error('Failed to log transaction creation:', logError);
       // Don't fail transaction creation if logging fails
+    }
+
+    // Emit real-time event for transaction creation
+    try {
+      const eventData = this.realtimeEventService.createEventData(
+        'created',
+        'transaction',
+        savedTransaction._id.toString(),
+        savedTransaction,
+        {
+          id: userId,
+          email: 'staff@system.com', // Could be improved by getting actual user data
+          role: UserRole.STAFF,
+          branchId: createTransactionDto.branchId,
+          branch: 'System Branch', // Could be improved by getting actual branch name
+        }
+      );
+      this.realtimeEventService.emitTransactionCreated(eventData);
+      console.log('✅ Real-time transaction event emitted');
+    } catch (realtimeError) {
+      console.error('Failed to emit real-time transaction event:', realtimeError);
+      // Don't fail transaction creation if real-time event fails
     }
 
     // Get updated client balance for registered clients

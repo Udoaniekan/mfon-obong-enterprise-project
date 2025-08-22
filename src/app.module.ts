@@ -15,6 +15,7 @@ import { UsersModule } from './modules/users/users.module';
 import { BranchesModule } from './modules/branches/branches.module';
 import { SystemActivityLogModule } from './modules/system-activity-logs/system-activity-log.module';
 import { HealthModule } from './modules/health/health.module';
+import { WebSocketModule } from './modules/websocket/websocket.module';
 import { databaseConfig, jwtConfig } from './config/configuration';
 // ... your other imports
 
@@ -42,6 +43,7 @@ import { databaseConfig, jwtConfig } from './config/configuration';
     SeedModule,
     SystemActivityLogModule,
     HealthModule,
+    WebSocketModule,
   ],
   controllers: [AppController],
   providers: [AppService],

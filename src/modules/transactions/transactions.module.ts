@@ -6,6 +6,7 @@ import { TransactionsController } from './controllers/transactions.controller';
 import { ProductsModule } from '../products/products.module';
 import { ClientsModule } from '../clients/clients.module';
 import { SystemActivityLogModule } from '../system-activity-logs/system-activity-log.module';
+import { WebSocketModule } from '../websocket/websocket.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { SystemActivityLogModule } from '../system-activity-logs/system-activity
     ProductsModule,
     ClientsModule,
     SystemActivityLogModule,
+    WebSocketModule,
   ],
   providers: [TransactionsService],
   controllers: [TransactionsController],

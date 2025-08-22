@@ -16,6 +16,7 @@ import {
 import { UserDocument } from '../../users/schemas/user.schema';
 import { UserRole } from '../../../common/enums';
 import { SystemActivityLogService } from '../../system-activity-logs/services/system-activity-log.service';
+import { RealtimeEventService } from '../../websocket/realtime-event.service';
 
 @Injectable()
 export class ClientsService {
@@ -23,6 +24,7 @@ export class ClientsService {
     @InjectModel(Client.name)
     private readonly clientModel: Model<ClientDocument>,
     private readonly systemActivityLogService: SystemActivityLogService,
+    private readonly realtimeEventService: RealtimeEventService,
   ) {}
 
   async create(
@@ -55,6 +57,28 @@ export class ClientsService {
       console.error('Failed to log client creation:', logError);
     }
 
+    // Emit real-time event for client creation
+    try {
+      if (currentUser) {
+        const eventData = this.realtimeEventService.createEventData(
+          'created',
+          'client',
+          savedClient._id.toString(),
+          savedClient,
+          {
+            id: currentUser._id?.toString() || '',
+            email: currentUser.email,
+            role: currentUser.role,
+            branchId: currentUser.branchId?.toString(),
+            branch: currentUser.branch,
+          }
+        );
+        this.realtimeEventService.emitClientCreated(eventData);
+      }
+    } catch (realtimeError) {
+      // Don't fail if real-time event fails
+    }
+
     return savedClient;
   }
 
@@ -62,7 +86,39 @@ export class ClientsService {
     query: QueryClientsDto,
     currentUser?: UserDocument,
   ): Promise<Client[]> {
-    const filter: any = { isActive: true };
+    const filter: any = {}; // Include all clients (active + blocked)
+    if (query.search) {
+      filter.$or = [
+        { name: new RegExp(query.search, 'i') },
+        { phone: new RegExp(query.search, 'i') },
+      ];
+    }
+    if (query.minBalance !== undefined) {
+      filter.balance = { $gte: query.minBalance };
+    }
+    if (query.maxBalance !== undefined) {
+      filter.balance = { ...filter.balance, $lte: query.maxBalance };
+    }
+    if (query.startDate || query.endDate) {
+      filter.lastTransactionDate = {};
+      if (query.startDate) {
+        filter.lastTransactionDate.$gte = query.startDate;
+      }
+      if (query.endDate) {
+        filter.lastTransactionDate.$lte = query.endDate;
+      }
+    }
+    return this.clientModel
+      .find(filter)
+      .sort({ lastTransactionDate: -1 })
+      .exec();
+  }
+
+  async findAllActive(
+    query: QueryClientsDto,
+    currentUser?: UserDocument,
+  ): Promise<Client[]> {
+    const filter: any = { isActive: true }; // Only active clients
     if (query.search) {
       filter.$or = [
         { name: new RegExp(query.search, 'i') },
@@ -131,6 +187,28 @@ export class ClientsService {
       });
     } catch (logError) {
       console.error('Failed to log client update:', logError);
+    }
+
+    // Emit real-time event for client update
+    try {
+      if (currentUser) {
+        const eventData = this.realtimeEventService.createEventData(
+          'updated',
+          'client',
+          savedClient._id.toString(),
+          savedClient,
+          {
+            id: currentUser._id?.toString() || '',
+            email: currentUser.email,
+            role: currentUser.role,
+            branchId: currentUser.branchId?.toString(),
+            branch: currentUser.branch,
+          }
+        );
+        this.realtimeEventService.emitClientUpdated(eventData);
+      }
+    } catch (realtimeError) {
+      // Don't fail if real-time event fails
     }
 
     return savedClient;
@@ -205,6 +283,28 @@ export class ClientsService {
       });
     } catch (logError) {
       console.error('Failed to log client deletion:', logError);
+    }
+
+    // Emit real-time event for client deletion
+    try {
+      if (currentUser) {
+        const eventData = this.realtimeEventService.createEventData(
+          'deleted',
+          'client',
+          client._id.toString(),
+          client,
+          {
+            id: currentUser._id?.toString() || '',
+            email: currentUser.email,
+            role: currentUser.role,
+            branchId: currentUser.branchId?.toString(),
+            branch: currentUser.branch,
+          }
+        );
+        this.realtimeEventService.emitClientDeleted(eventData);
+      }
+    } catch (realtimeError) {
+      // Don't fail if real-time event fails
     }
   }
 

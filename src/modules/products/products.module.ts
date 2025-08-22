@@ -5,12 +5,14 @@ import { ProductsService } from './services/products.service';
 import { ProductsController } from './controllers/products.controller';
 import { CategoriesModule } from '../categories/categories.module';
 import { SystemActivityLogModule } from '../system-activity-logs/system-activity-log.module';
+import { WebSocketModule } from '../websocket/websocket.module';
 
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: Product.name, schema: ProductSchema }]),
     CategoriesModule,
     SystemActivityLogModule,
+    WebSocketModule,
   ],
   providers: [ProductsService],
   controllers: [ProductsController],

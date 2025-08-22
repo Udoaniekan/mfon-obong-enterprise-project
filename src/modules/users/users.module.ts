@@ -7,6 +7,7 @@ import { UserProfilePictureService } from './services/user-profile-picture.servi
 import { CloudinaryModule } from './cloudinary.module';
 import { SystemActivityLogModule } from '../system-activity-logs/system-activity-log.module';
 import { BranchesModule } from '../branches/branches.module';
+import { WebSocketModule } from '../websocket/websocket.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { BranchesModule } from '../branches/branches.module';
     CloudinaryModule,
     SystemActivityLogModule,
     BranchesModule,
+    WebSocketModule,
   ],
   providers: [UsersService, UserProfilePictureService],
   controllers: [UsersController],

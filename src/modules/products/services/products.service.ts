@@ -16,6 +16,7 @@ import { CategoriesService } from '../../categories/services/categories.service'
 import { UserDocument } from '../../users/schemas/user.schema';
 import { UserRole } from '../../../common/enums';
 import { SystemActivityLogService } from '../../system-activity-logs/services/system-activity-log.service';
+import { RealtimeEventService } from '../../websocket/realtime-event.service';
 
 @Injectable()
 export class ProductsService {
@@ -23,6 +24,7 @@ export class ProductsService {
     @InjectModel(Product.name) private productModel: Model<ProductDocument>,
     private readonly categoriesService: CategoriesService,
     private readonly systemActivityLogService: SystemActivityLogService,
+    private readonly realtimeEventService: RealtimeEventService,
   ) {}
 
   async create(
@@ -77,6 +79,28 @@ export class ProductsService {
       });
     } catch (logError) {
       // Don't fail if logging fails
+    }
+
+    // Emit real-time event for product creation
+    try {
+      if (currentUser) {
+        const eventData = this.realtimeEventService.createEventData(
+          'created',
+          'product',
+          savedProduct._id.toString(),
+          savedProduct,
+          {
+            id: currentUser._id?.toString() || '',
+            email: currentUser.email,
+            role: currentUser.role,
+            branchId: currentUser.branchId?.toString(),
+            branch: currentUser.branch,
+          }
+        );
+        this.realtimeEventService.emitProductCreated(eventData);
+      }
+    } catch (realtimeError) {
+      // Don't fail if real-time event fails
     }
 
     // Return the product with populated branchId information
@@ -197,6 +221,28 @@ export class ProductsService {
       console.error('Failed to log product update:', logError);
     }
 
+    // Emit real-time event for product update
+    try {
+      if (currentUser) {
+        const eventData = this.realtimeEventService.createEventData(
+          'updated',
+          'product',
+          savedProduct._id.toString(),
+          savedProduct,
+          {
+            id: currentUser._id?.toString() || '',
+            email: currentUser.email,
+            role: currentUser.role,
+            branchId: currentUser.branchId?.toString(),
+            branch: currentUser.branch,
+          }
+        );
+        this.realtimeEventService.emitProductUpdated(eventData);
+      }
+    } catch (realtimeError) {
+      // Don't fail if real-time event fails
+    }
+
     return savedProduct;
   }
 
@@ -287,6 +333,28 @@ export class ProductsService {
       });
     } catch (logError) {
       console.error('Failed to log product deactivation:', logError);
+    }
+
+    // Emit real-time event for product deletion
+    try {
+      if (currentUser) {
+        const eventData = this.realtimeEventService.createEventData(
+          'deleted',
+          'product',
+          product._id.toString(),
+          product,
+          {
+            id: currentUser._id?.toString() || '',
+            email: currentUser.email,
+            role: currentUser.role,
+            branchId: currentUser.branchId?.toString(),
+            branch: currentUser.branch,
+          }
+        );
+        this.realtimeEventService.emitProductDeleted(eventData);
+      }
+    } catch (realtimeError) {
+      // Don't fail if real-time event fails
     }
   }
 

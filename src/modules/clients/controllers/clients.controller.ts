@@ -63,6 +63,20 @@ export class ClientsController {
     return this.clientsService.findAll(query, req.user);
   }
 
+  @Get('active')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.MAINTAINER,
+    UserRole.STAFF,
+  )
+  async findAllActive(
+    @Query() query: QueryClientsDto,
+    @Request() req,
+  ): Promise<Client[]> {
+    return this.clientsService.findAllActive(query, req.user);
+  }
+
   @Get('debtors')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER)
   async findDebtors(
