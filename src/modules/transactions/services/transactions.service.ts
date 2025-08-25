@@ -142,8 +142,13 @@ export class TransactionsService {
         status = 'COMPLETED';
       }
     } else {
-      // Walk-in client
-      status = amountPaid >= total ? 'COMPLETED' : 'PENDING';
+      // Walk-in client - STRICT payment validation
+      if (amountPaid < total) {
+        throw new BadRequestException(
+          `Insufficient payment for walk-in client. Required: ${total}, Provided: ${amountPaid}. Walk-in clients must pay the full amount upfront.`
+        );
+      }
+      status = 'COMPLETED';
     }
 
     const transaction = new this.transactionModel({

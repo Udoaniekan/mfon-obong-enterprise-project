@@ -224,6 +224,14 @@ export class AuthService {
     return this.blacklistedTokens.has(token);
   }
 
+  getRefreshTokenData(refreshToken: string) {
+    return this.refreshTokens.get(refreshToken);
+  }
+
+  invalidateRefreshToken(refreshToken: string) {
+    this.refreshTokens.delete(refreshToken);
+  }
+
   // Refresh Token Methods
   async refreshToken(refreshToken: string, userAgent?: string) {
     try {

@@ -21,7 +21,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     console.log('JWT_SECRET from JwtStrategy:', jwtSecret);
 
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: (req) => {
+        // Try to extract from cookies first, fallback to header
+        if (req && req.cookies && req.cookies.accessToken) {
+          return req.cookies.accessToken;
+        }
+        // Fallback to Authorization header for backwards compatibility
+        return ExtractJwt.fromAuthHeaderAsBearerToken()(req);
+      },
       ignoreExpiration: false,
       secretOrKey: jwtSecret,
       passReqToCallback: true,
@@ -29,7 +36,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(req: any, payload: any) {
-    const token = ExtractJwt.fromAuthHeaderAsBearerToken()(req);
+    // Extract token from cookies or header
+    let token = req.cookies?.accessToken;
+    if (!token) {
+      token = ExtractJwt.fromAuthHeaderAsBearerToken()(req);
+    }
 
     // Check if token is blacklisted
     if (token && this.authService.isTokenBlacklisted(token)) {
