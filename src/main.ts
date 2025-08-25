@@ -18,7 +18,7 @@ async function bootstrap() {
       'http://localhost:4200',
       'http://localhost:5173',
       'https://frontend-six-liard-24.vercel.app',
-      'https://mfon-obong-enterprises.pipeops.net/',
+      'https://mfon-obong-enterprises.pipeops.net',
       // Add more production frontend domains here as needed
     ],
     credentials: true,

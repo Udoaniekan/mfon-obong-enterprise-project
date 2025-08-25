@@ -21,6 +21,11 @@ export class UserProfilePictureService {
     currentUser: any,
   ): Promise<string> {
     try {
+      // Check if file was provided
+      if (!file) {
+        throw new ForbiddenException('No file provided. Please upload a JPEG image.');
+      }
+
       if (file.mimetype !== 'image/jpeg' && file.mimetype !== 'image/pjpeg') {
         throw new ForbiddenException('Only JPEG images are allowed');
       }
