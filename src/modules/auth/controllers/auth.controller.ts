@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Request, Response, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, Request, Response, UseGuards, BadRequestException } from '@nestjs/common';
 import { AuthService } from '../services/auth.service';
 import { OtpRequestDto, OtpVerifyDto } from '../dto/otp-request.dto';
 import { RefreshTokenDto } from '../dto/auth.dto';
@@ -32,9 +32,11 @@ export class AuthController {
       sameSite: 'none' // Allow cross-origin requests
     });
     
-    // Return user info without tokens
+    // Return user info WITH tokens for backwards compatibility
     return {
       user: result.user,
+      access_token: result.access_token,
+      refresh_token: result.refresh_token,
       message: 'Login successful'
     };
   }
@@ -62,7 +64,7 @@ export class AuthController {
     const refreshToken = req.cookies?.refreshToken || refreshTokenDto.refresh_token;
     
     if (!refreshToken) {
-      throw new Error('No refresh token provided');
+      throw new BadRequestException('No refresh token provided. Please provide token in body or ensure you are logged in with cookies.');
     }
     
     const result = await this.authService.refreshToken(refreshToken, userAgent);
