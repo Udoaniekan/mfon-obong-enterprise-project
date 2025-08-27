@@ -20,16 +20,16 @@ export class AuthController {
     
     res.cookie('accessToken', result.access_token, {
       httpOnly: true,
-      secure: isProduction,
+      secure: true, // Always secure for cross-origin cookies
       maxAge: 60 * 60 * 1000, // 1 hour
-      sameSite: 'lax'
+      sameSite: 'none' // Allow cross-origin requests
     });
     
     res.cookie('refreshToken', result.refresh_token, {
       httpOnly: true,
-      secure: isProduction,
+      secure: true, // Always secure for cross-origin cookies
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      sameSite: 'lax'
+      sameSite: 'none' // Allow cross-origin requests
     });
     
     // Return user info without tokens
@@ -72,16 +72,16 @@ export class AuthController {
     
     res.cookie('accessToken', result.access_token, {
       httpOnly: true,
-      secure: isProduction,
+      secure: true, // Always secure for cross-origin cookies
       maxAge: 60 * 60 * 1000, // 1 hour
-      sameSite: 'lax'
+      sameSite: 'none' // Allow cross-origin requests
     });
     
     res.cookie('refreshToken', result.refresh_token, {
       httpOnly: true,
-      secure: isProduction,
+      secure: true, // Always secure for cross-origin cookies
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      sameSite: 'lax'
+      sameSite: 'none' // Allow cross-origin requests
     });
     
     // Return user info without tokens
