@@ -62,9 +62,17 @@ export class UsersController {
   }
 
   @Get(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER, UserRole.STAFF)
   async findOne(@Param('id') id: string, @Request() req): Promise<User> {
+    // STAFF can only access their own profile
+    if (req.user.role === UserRole.STAFF && req.user.userId !== id) {
+      throw new Error(
+        'Forbidden: STAFF can only access their own profile',
+      );
+    }
+
     const user = await this.usersService.findById(id, req.user);
+    
     // Only allow ADMIN to get users from their own branch
     if (
       req.user.role === UserRole.ADMIN &&
@@ -74,6 +82,7 @@ export class UsersController {
         'Forbidden: ADMIN can only access users from their own branch',
       );
     }
+    
     return user;
   }
 
