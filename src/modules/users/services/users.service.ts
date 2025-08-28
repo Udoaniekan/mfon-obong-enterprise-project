@@ -156,12 +156,18 @@ export class UsersService {
   async findById(id: string, currentUser?: UserDocument): Promise<User> {
     const filter: any = { _id: id };
 
-    // Only SUPER_ADMIN and MAINTAINER can access users from other branches
-    if (
-      currentUser &&
-      ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
-    ) {
-      filter.branchId = currentUser.branchId;
+    if (currentUser) {
+      if (currentUser.role === UserRole.STAFF) {
+        // STAFF can only access their own profile
+        const currentUserId = currentUser._id?.toString() || (currentUser as any).userId;
+        if (currentUserId !== id) {
+          throw new NotFoundException('User not found');
+        }
+      } else if (![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
+        // ADMIN can access users from their own branch only
+        filter.branchId = currentUser.branchId;
+      }
+      // SUPER_ADMIN and MAINTAINER can access any user (no restrictions)
     }
 
     const user = await this.userModel

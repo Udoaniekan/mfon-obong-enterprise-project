@@ -10,6 +10,7 @@ import {
   Request,
   UseInterceptors,
   UploadedFile,
+  NotFoundException,
 } from '@nestjs/common';
 import { UsersService } from '../services/users.service';
 import { CreateUserDto, UpdateUserDto } from '../dto/user.dto';
@@ -66,9 +67,7 @@ export class UsersController {
   async findOne(@Param('id') id: string, @Request() req): Promise<User> {
     // STAFF can only access their own profile
     if (req.user.role === UserRole.STAFF && req.user.userId !== id) {
-      throw new Error(
-        'Forbidden: STAFF can only access their own profile',
-      );
+      throw new NotFoundException('User not found');
     }
 
     const user = await this.usersService.findById(id, req.user);
