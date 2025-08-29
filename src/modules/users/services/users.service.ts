@@ -179,6 +179,12 @@ export class UsersService {
     }
     return user;
   }
+
+  async findByIdRaw(id: string): Promise<User | null> {
+    // Raw find without permission checks - used for JWT validation
+    return this.userModel.findById(id).select('-password').exec();
+  }
+
   async findByEmail(email: string): Promise<UserDocument> {
     const user = await this.userModel
       .findOne({ email });

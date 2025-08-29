@@ -117,6 +117,16 @@ export class AuthService {
       if (!isPasswordValid) {
         throw new UnauthorizedException('Invalid password');
       }
+
+      // Check if user is inactive (soft deleted)
+      if (!user.isActive) {
+        throw new UnauthorizedException('Account has been deactivated. Please contact administrator.');
+      }
+
+      // Check if user is blocked
+      if (user.isBlocked) {
+        throw new UnauthorizedException(`Account has been suspended. Reason: ${user.blockReason || 'Contact administrator for details.'}`);
+      }
       
       const { password: _, ...result } = user.toJSON();
       return {
@@ -126,6 +136,18 @@ export class AuthService {
       };
     } catch (error) {
       throw new UnauthorizedException(error.message);
+    }
+  }
+
+  async validateUserById(userId: string): Promise<any> {
+    try {
+      const user = await this.usersService.findByIdRaw(userId);
+      if (!user) {
+        throw new UnauthorizedException('User not found');
+      }
+      return user;
+    } catch (error) {
+      throw new UnauthorizedException('Invalid user');
     }
   }
   async login(user: any, userAgent?: string) {

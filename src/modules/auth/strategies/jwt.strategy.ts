@@ -47,6 +47,22 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Token has been invalidated');
     }
 
+    // Check if user is still active and not blocked
+    try {
+      const currentUser = await this.authService.validateUserById(payload.sub);
+      if (!currentUser.isActive) {
+        throw new UnauthorizedException('Account has been deactivated. Please contact administrator.');
+      }
+      if (currentUser.isBlocked) {
+        throw new UnauthorizedException(`Account has been suspended. Reason: ${currentUser.blockReason || 'Contact administrator for details.'}`);
+      }
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+      throw new UnauthorizedException('Invalid user');
+    }
+
     return {
       userId: payload.sub,
       email: payload.email,
