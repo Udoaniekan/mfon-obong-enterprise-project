@@ -15,7 +15,7 @@ export class SystemActivityLogController {
   ) {}
 
   @Post()
-  @Roles(UserRole.MAINTAINER)
+  @Roles(UserRole.MAINTAINER, UserRole.SUPER_ADMIN)
   async createLog(
     @Body() createSystemActivityLogDto: CreateSystemActivityLogDto,
   ): Promise<SystemActivityLog> {
@@ -23,7 +23,7 @@ export class SystemActivityLogController {
   }
 
   @Get()
-  @Roles(UserRole.MAINTAINER)
+  @Roles(UserRole.MAINTAINER, UserRole.SUPER_ADMIN)
   async getAllLogs(): Promise<SystemActivityLog[]> {
     return this.systemActivityLogService.getLogs();
   }
