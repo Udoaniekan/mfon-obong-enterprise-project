@@ -18,7 +18,11 @@ export class BranchesService {
     private readonly systemActivityLogService: SystemActivityLogService,
   ) {}
 
-  async create(createBranchDto: CreateBranchDto): Promise<BranchDocument> {
+  async create(
+    createBranchDto: CreateBranchDto,
+    currentUser?: { email: string; role: string; name?: string },
+    device?: string,
+  ): Promise<BranchDocument> {
     try {
       const branch = new this.branchModel(createBranchDto);
       const savedBranch = await branch.save();
@@ -28,9 +32,9 @@ export class BranchesService {
         await this.systemActivityLogService.createLog({
           action: 'BRANCH_CREATED',
           details: `New branch created: ${savedBranch.name} at ${savedBranch.address}`,
-          performedBy: 'System',
-          role: 'SUPER_ADMIN',
-          device: 'System',
+          performedBy: currentUser?.email || currentUser?.name || 'System',
+          role: currentUser?.role || 'SYSTEM',
+          device: device || 'System',
         });
       } catch (logError) {
         console.error('Failed to log branch creation:', logError);
@@ -94,6 +98,7 @@ export class BranchesService {
     id: string,
     updateBranchDto: UpdateBranchDto,
     currentUser?: UserDocument,
+    device?: string,
   ): Promise<BranchDocument> {
     // Role-based access control
     if (
@@ -108,7 +113,23 @@ export class BranchesService {
 
     try {
       Object.assign(branch, updateBranchDto);
-      return await branch.save();
+      const savedBranch = await branch.save();
+
+      // Log branch update activity
+      try {
+        const changes = Object.keys(updateBranchDto).join(', ');
+        await this.systemActivityLogService.createLog({
+          action: 'BRANCH_UPDATED',
+          details: `Branch updated: ${savedBranch.name} - Changes: ${changes}`,
+          performedBy: currentUser?.email || currentUser?.name || 'System',
+          role: currentUser?.role || 'SYSTEM',
+          device: device || 'System',
+        });
+      } catch (logError) {
+        console.error('Failed to log branch update:', logError);
+      }
+
+      return savedBranch;
     } catch (error) {
       if (error.code === 11000) {
         throw new ConflictException('Branch name already exists');
@@ -117,10 +138,27 @@ export class BranchesService {
     }
   }
 
-  async remove(id: string, currentUser?: UserDocument): Promise<void> {
+  async remove(
+    id: string,
+    currentUser?: UserDocument,
+    device?: string,
+  ): Promise<void> {
     const branch = await this.findById(id, currentUser);
     branch.isActive = false;
     await branch.save();
+
+    // Log branch deactivation activity
+    try {
+      await this.systemActivityLogService.createLog({
+        action: 'BRANCH_DEACTIVATED',
+        details: `Branch deactivated: ${branch.name}`,
+        performedBy: currentUser?.email || currentUser?.name || 'System',
+        role: currentUser?.role || 'SYSTEM',
+        device: device || 'System',
+      });
+    } catch (logError) {
+      console.error('Failed to log branch deactivation:', logError);
+    }
   }
 
   async hardRemove(id: string): Promise<void> {

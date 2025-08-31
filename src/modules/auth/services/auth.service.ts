@@ -30,6 +30,7 @@ export class AuthService {
   async requestOtp(
     email: string,
     userId: string,
+    device?: string,
   ): Promise<{ message: string }> {
     const user = await this.usersService.findByEmail(email);
     if (!user) throw new BadRequestException('Maintainer email not found');
@@ -56,8 +57,8 @@ export class AuthService {
         action: 'OTP_REQUESTED',
         details: `OTP requested for password reset: ${email}`,
         performedBy: email,
-        role: 'MAINTAINER',
-        device: 'System',
+        role: user.role,
+        device: device || 'System',
       });
     } catch (logError) {
       // Don't fail if logging fails
@@ -72,6 +73,7 @@ export class AuthService {
     userId: string,
     otp: string,
     newPassword: string,
+    device?: string,
   ): Promise<{ message: string }> {
     const otpDoc = await this.otpModel.findOne({
       email,
@@ -92,12 +94,13 @@ export class AuthService {
 
     // Log OTP verification and password reset
     try {
+      const verifyingUser = await this.usersService.findByEmail(email);
       await this.systemActivityLogService.createLog({
         action: 'OTP_VERIFIED',
         details: `OTP verified and password reset completed for: ${email}`,
         performedBy: email,
-        role: 'MAINTAINER',
-        device: 'System',
+        role: verifyingUser?.role || 'MAINTAINER',
+        device: device || 'System',
       });
     } catch (logError) {
       // Don't fail if logging fails

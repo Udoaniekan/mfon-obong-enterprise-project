@@ -30,6 +30,7 @@ export class ProductsService {
   async create(
     createProductDto: CreateProductDto,
     currentUser?: UserDocument,
+    device?: string,
   ): Promise<Product> {
     // branchId is now compulsory from DTO - use the provided branchId
     const branchId = createProductDto.branchId;
@@ -73,9 +74,9 @@ export class ProductsService {
       await this.systemActivityLogService.createLog({
         action: 'PRODUCT_CREATED',
         details: `Product created: ${savedProduct.name} (${savedProduct.unit}) in category ${category.name} - Price: ${savedProduct.unitPrice}`,
-        performedBy: currentUser?.email || 'System',
-        role: currentUser?.role || 'ADMIN',
-        device: 'System',
+        performedBy: currentUser?.email || currentUser?.name || 'System',
+        role: currentUser?.role || 'SYSTEM',
+        device: device || 'System',
       });
     } catch (logError) {
       // Don't fail if logging fails
@@ -162,6 +163,7 @@ export class ProductsService {
     id: string,
     updateProductDto: UpdateProductDto,
     currentUser?: UserDocument,
+    device?: string,
   ): Promise<ProductDocument> {
     const product = await this.findById(id, currentUser);
 
@@ -213,9 +215,9 @@ export class ProductsService {
       await this.systemActivityLogService.createLog({
         action: 'PRODUCT_UPDATED',
         details: `Product updated: ${savedProduct.name} - Changes: ${changes}`,
-        performedBy: currentUser?.email || 'System',
-        role: currentUser?.role || 'ADMIN',
-        device: 'System',
+        performedBy: currentUser?.email || currentUser?.name || 'System',
+        role: currentUser?.role || 'SYSTEM',
+        device: device || 'System',
       });
     } catch (logError) {
       console.error('Failed to log product update:', logError);
@@ -250,6 +252,7 @@ export class ProductsService {
     id: string,
     updateStockDto: UpdateStockDto,
     currentUser?: UserDocument,
+    device?: string,
   ): Promise<ProductDocument> {
     const filter: any = { _id: id };
 
@@ -306,9 +309,9 @@ export class ProductsService {
       await this.systemActivityLogService.createLog({
         action: 'STOCK_UPDATED',
         details: `Stock ${operation === StockOperation.ADD ? 'increased' : 'decreased'} for ${updatedProduct.name}: ${quantity} ${unit} (New stock: ${newStock})`,
-        performedBy: currentUser?.email || 'System',
-        role: currentUser?.role || 'STAFF',
-        device: 'System',
+        performedBy: currentUser?.email || currentUser?.name || 'System',
+        role: currentUser?.role || 'SYSTEM',
+        device: device || 'System',
       });
     } catch (logError) {
       console.error('Failed to log stock update:', logError);
@@ -317,7 +320,11 @@ export class ProductsService {
     return updatedProduct;
   }
 
-  async remove(id: string, currentUser?: UserDocument): Promise<void> {
+  async remove(
+    id: string,
+    currentUser?: UserDocument,
+    device?: string,
+  ): Promise<void> {
     const product = await this.findById(id, currentUser);
     product.isActive = false;
     await product.save();
@@ -327,9 +334,9 @@ export class ProductsService {
       await this.systemActivityLogService.createLog({
         action: 'PRODUCT_DEACTIVATED',
         details: `Product deactivated: ${product.name} (${product.unit})`,
-        performedBy: currentUser?.email || 'System',
-        role: currentUser?.role || 'ADMIN',
-        device: 'System',
+        performedBy: currentUser?.email || currentUser?.name || 'System',
+        role: currentUser?.role || 'SYSTEM',
+        device: device || 'System',
       });
     } catch (logError) {
       console.error('Failed to log product deactivation:', logError);
@@ -358,7 +365,11 @@ export class ProductsService {
     }
   }
 
-  async hardRemove(id: string, currentUser?: UserDocument): Promise<void> {
+  async hardRemove(
+    id: string,
+    currentUser?: UserDocument,
+    device?: string,
+  ): Promise<void> {
     const filter: any = { _id: id };
 
     // Only SUPER_ADMIN and MAINTAINER can delete products from other branches
@@ -379,9 +390,9 @@ export class ProductsService {
       await this.systemActivityLogService.createLog({
         action: 'PRODUCT_DELETED',
         details: `Product permanently deleted: ${result.name} (${result.unit})`,
-        performedBy: currentUser?.email || 'System',
-        role: currentUser?.role || 'ADMIN',
-        device: 'System',
+        performedBy: currentUser?.email || currentUser?.name || 'System',
+        role: currentUser?.role || 'SYSTEM',
+        device: device || 'System',
       });
     } catch (logError) {
       console.error('Failed to log product deletion:', logError);

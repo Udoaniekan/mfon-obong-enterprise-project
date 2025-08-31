@@ -26,6 +26,7 @@ export class UsersService {
     id: string,
     blockUserDto: { reason?: string },
     currentUser?: UserDocument,
+    device?: string,
   ): Promise<User> {
     const filter: any = { _id: id };
     // Only SUPER_ADMIN and MAINTAINER can block users from other branches
@@ -49,9 +50,9 @@ export class UsersService {
       await this.systemActivityLogService.createLog({
         action: 'USER_BLOCKED',
         details: `User blocked: ${user.name} (${user.email}) - Reason: ${blockUserDto.reason || 'N/A'}`,
-        performedBy: currentUser?.email || 'System',
-        role: currentUser?.role || 'ADMIN',
-        device: 'System',
+        performedBy: currentUser?.email || currentUser?.name || 'System',
+        role: currentUser?.role || 'SYSTEM',
+        device: device || 'System',
       });
     } catch (logError) {
       console.error('Failed to log user block:', logError);
@@ -59,7 +60,11 @@ export class UsersService {
     return user;
   }
 
-  async unblockUser(id: string, currentUser?: UserDocument): Promise<User> {
+  async unblockUser(
+    id: string,
+    currentUser?: UserDocument,
+    device?: string,
+  ): Promise<User> {
     const filter: any = { _id: id };
     // Only SUPER_ADMIN and MAINTAINER can unblock users from other branches
     if (
@@ -80,16 +85,20 @@ export class UsersService {
       await this.systemActivityLogService.createLog({
         action: 'USER_UNBLOCKED',
         details: `User unblocked: ${user.name} (${user.email})`,
-        performedBy: currentUser?.email || 'System',
-        role: currentUser?.role || 'ADMIN',
-        device: 'System',
+        performedBy: currentUser?.email || currentUser?.name || 'System',
+        role: currentUser?.role || 'SYSTEM',
+        device: device || 'System',
       });
     } catch (logError) {
       console.error('Failed to log user unblock:', logError);
     }
     return user;
   }
-  async create(createUserDto: CreateUserDto): Promise<User> {
+  async create(
+    createUserDto: CreateUserDto,
+    currentUser?: { userId: string; email: string; role: string; name?: string },
+    device?: string
+  ): Promise<User> {
     console.log('Creating user with data:', {
       ...createUserDto,
       password: '[REDACTED]',
@@ -123,9 +132,9 @@ export class UsersService {
       await this.systemActivityLogService.createLog({
         action: 'USER_CREATED',
         details: `New user created: ${savedUser.name} (${savedUser.email}) with role ${savedUser.role}`,
-        performedBy: 'System', // Could be improved by passing the creator's ID
-        role: 'ADMIN', // Default role for user creation
-        device: 'System',
+        performedBy: currentUser?.email || currentUser?.name || 'System',
+        role: currentUser?.role || 'SYSTEM',
+        device: device || 'System',
       });
     } catch (logError) {
       console.error('Failed to log user creation:', logError);
@@ -195,6 +204,7 @@ export class UsersService {
     id: string,
     updateUserDto: UpdateUserDto,
     currentUser?: UserDocument,
+    device?: string,
   ): Promise<User> {
     const filter: any = { _id: id };
 
@@ -261,9 +271,9 @@ export class UsersService {
       await this.systemActivityLogService.createLog({
         action: 'USER_UPDATED',
         details: `User updated: ${user.name} (${user.email})${changeDetails}`,
-        performedBy: currentUser?.email || 'System',
-        role: currentUser?.role || 'ADMIN',
-        device: 'System',
+        performedBy: currentUser?.email || currentUser?.name || 'System',
+        role: currentUser?.role || 'SYSTEM',
+        device: device || 'System',
       });
     } catch (logError) {
       console.error('Failed to log user update:', logError);
@@ -272,7 +282,11 @@ export class UsersService {
     return user;
   }
 
-  async remove(id: string, currentUser?: UserDocument): Promise<void> {
+  async remove(
+    id: string,
+    currentUser?: UserDocument,
+    device?: string,
+  ): Promise<void> {
     const filter: any = { _id: id };
 
     // Only SUPER_ADMIN and MAINTAINER can delete users from other branches
@@ -297,9 +311,9 @@ export class UsersService {
       await this.systemActivityLogService.createLog({
         action: 'USER_DELETED',
         details: `User deleted: ${user.name} (${user.email}) - Role: ${user.role}`,
-        performedBy: currentUser?.email || 'System',
-        role: currentUser?.role || 'ADMIN',
-        device: 'System',
+        performedBy: currentUser?.email || currentUser?.name || 'System',
+        role: currentUser?.role || 'SYSTEM',
+        device: device || 'System',
       });
     } catch (logError) {
       console.error('Failed to log user deletion:', logError);
@@ -341,7 +355,12 @@ export class UsersService {
     }
   }
 
-  async forgotPassword(userId: string, newPassword: string): Promise<void> {
+  async forgotPassword(
+    userId: string,
+    newPassword: string,
+    performedByUser?: { email: string; role: string; name?: string },
+    device?: string
+  ): Promise<void> {
     const user = await this.userModel.findById(userId);
     if (!user) {
       throw new NotFoundException('User not found');
@@ -359,9 +378,9 @@ export class UsersService {
       await this.systemActivityLogService.createLog({
         action: 'PASSWORD_RESET',
         details: `Password reset for user: ${user.name} (${user.email})`,
-        performedBy: 'MAINTAINER', // Since only maintainers can reset passwords
-        role: 'MAINTAINER',
-        device: 'System',
+        performedBy: performedByUser?.email || performedByUser?.name || 'System',
+        role: performedByUser?.role || 'MAINTAINER',
+        device: device || 'System',
       });
     } catch (logError) {
       // Don't fail if logging fails

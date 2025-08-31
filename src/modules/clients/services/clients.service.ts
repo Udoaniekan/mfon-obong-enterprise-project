@@ -30,6 +30,7 @@ export class ClientsService {
   async create(
     createClientDto: CreateClientDto,
     currentUser?: UserDocument,
+    device?: string,
   ): Promise<Client> {
     const existingClient = await this.clientModel.findOne({
       phone: createClientDto.phone,
@@ -49,9 +50,9 @@ export class ClientsService {
       await this.systemActivityLogService.createLog({
         action: 'CLIENT_CREATED',
         details: `New client registered: ${savedClient.name} (${savedClient.phone})`,
-        performedBy: currentUser?.email || 'System',
-        role: currentUser?.role || 'STAFF',
-        device: 'System',
+        performedBy: currentUser?.email || currentUser?.name || 'System',
+        role: currentUser?.role || 'SYSTEM',
+        device: device || 'System',
       });
     } catch (logError) {
       console.error('Failed to log client creation:', logError);
@@ -161,6 +162,7 @@ export class ClientsService {
     id: string,
     updateClientDto: UpdateClientDto,
     currentUser?: UserDocument,
+    device?: string,
   ): Promise<ClientDocument> {
     const client = await this.findById(id, currentUser);
     if (updateClientDto.phone) {
@@ -181,9 +183,9 @@ export class ClientsService {
       await this.systemActivityLogService.createLog({
         action: 'CLIENT_UPDATED',
         details: `Client updated: ${savedClient.name} - Changes: ${changes}`,
-        performedBy: currentUser?.email || 'System',
-        role: currentUser?.role || 'STAFF',
-        device: 'System',
+        performedBy: currentUser?.email || currentUser?.name || 'System',
+        role: currentUser?.role || 'SYSTEM',
+        device: device || 'System',
       });
     } catch (logError) {
       console.error('Failed to log client update:', logError);
@@ -218,6 +220,7 @@ export class ClientsService {
     id: string,
     transactionDto: AddTransactionDto,
     currentUser?: UserDocument,
+    device?: string,
   ): Promise<ClientDocument> {
     const client = await this.findById(id, currentUser);
     const transaction = {
@@ -251,9 +254,9 @@ export class ClientsService {
       await this.systemActivityLogService.createLog({
         action: 'CLIENT_TRANSACTION_ADDED',
         details: `${transaction.type} transaction added for ${client.name}: ${transaction.amount} - Balance: ${client.balance}`,
-        performedBy: currentUser?.email || 'System',
-        role: currentUser?.role || 'STAFF',
-        device: 'System',
+        performedBy: currentUser?.email || currentUser?.name || 'System',
+        role: currentUser?.role || 'SYSTEM',
+        device: device || 'System',
       });
     } catch (logError) {
       console.error('Failed to log client transaction:', logError);
@@ -262,7 +265,11 @@ export class ClientsService {
     return savedClient;
   }
 
-  async remove(id: string, currentUser?: UserDocument): Promise<void> {
+  async remove(
+    id: string,
+    currentUser?: UserDocument,
+    device?: string,
+  ): Promise<void> {
     const client = await this.clientModel.findById(id);
     if (!client) {
       throw new NotFoundException('Client not found');
@@ -277,9 +284,9 @@ export class ClientsService {
       await this.systemActivityLogService.createLog({
         action: 'CLIENT_DELETED',
         details: `Client deleted: ${client.name} (${client.phone})`,
-        performedBy: currentUser?.email || 'System',
-        role: currentUser?.role || 'ADMIN',
-        device: 'System',
+        performedBy: currentUser?.email || currentUser?.name || 'System',
+        role: currentUser?.role || 'SYSTEM',
+        device: device || 'System',
       });
     } catch (logError) {
       console.error('Failed to log client deletion:', logError);
@@ -399,6 +406,7 @@ export class ClientsService {
   async blockClient(
     id: string,
     currentUser?: UserDocument,
+    device?: string,
   ): Promise<ClientDocument> {
     const client = await this.findById(id, currentUser);
     
@@ -414,9 +422,9 @@ export class ClientsService {
       await this.systemActivityLogService.createLog({
         action: 'CLIENT_BLOCKED',
         details: `Client blocked: ${savedClient.name} (${savedClient.phone})`,
-        performedBy: currentUser?.email || 'System',
-        role: currentUser?.role || 'STAFF',
-        device: 'System',
+        performedBy: currentUser?.email || currentUser?.name || 'System',
+        role: currentUser?.role || 'SYSTEM',
+        device: device || 'System',
       });
     } catch (logError) {
       console.error('Failed to log client block:', logError);
@@ -428,6 +436,7 @@ export class ClientsService {
   async unblockClient(
     id: string,
     currentUser?: UserDocument,
+    device?: string,
   ): Promise<ClientDocument> {
     const client = await this.findById(id, currentUser);
     
@@ -443,9 +452,9 @@ export class ClientsService {
       await this.systemActivityLogService.createLog({
         action: 'CLIENT_UNBLOCKED',
         details: `Client unblocked: ${savedClient.name} (${savedClient.phone})`,
-        performedBy: currentUser?.email || 'System',
-        role: currentUser?.role || 'STAFF',
-        device: 'System',
+        performedBy: currentUser?.email || currentUser?.name || 'System',
+        role: currentUser?.role || 'SYSTEM',
+        device: device || 'System',
       });
     } catch (logError) {
       console.error('Failed to log client unblock:', logError);

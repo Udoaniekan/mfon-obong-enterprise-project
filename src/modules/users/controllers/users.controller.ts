@@ -27,6 +27,7 @@ import { Roles } from 'src/decorators/roles.decorators';
 import { UserProfilePictureService } from '../services/user-profile-picture.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Express } from 'express';
+import { extractDeviceInfo } from '../../system-activity-logs/utils/device-extractor.util';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -42,18 +43,21 @@ export class UsersController {
     @Body() blockUserDto: BlockUserDto,
     @Request() req,
   ): Promise<User> {
-    return this.usersService.blockUser(id, blockUserDto, req.user);
+    const device = extractDeviceInfo(req.headers['user-agent'] || '');
+    return this.usersService.blockUser(id, blockUserDto, req.user, device);
   }
   @Patch(':id/unblock')
   @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER)
   async unblockUser(@Param('id') id: string, @Request() req): Promise<User> {
-    return this.usersService.unblockUser(id, req.user);
+    const device = extractDeviceInfo(req.headers['user-agent'] || '');
+    return this.usersService.unblockUser(id, req.user, device);
   }
 
   @Post()
   @Roles(UserRole.MAINTAINER)
-  async create(@Body() createUserDto: CreateUserDto): Promise<User> {
-    return this.usersService.create(createUserDto);
+  async create(@Body() createUserDto: CreateUserDto, @Request() req): Promise<User> {
+    const device = extractDeviceInfo(req.headers['user-agent'] || '');
+    return this.usersService.create(createUserDto, req.user, device);
   }
 
   @Get()
@@ -102,13 +106,15 @@ export class UsersController {
         'Forbidden: ADMIN can only update users from their own branch',
       );
     }
-    return this.usersService.update(id, updateUserDto, req.user);
+    const device = extractDeviceInfo(req.headers['user-agent'] || '');
+    return this.usersService.update(id, updateUserDto, req.user, device);
   }
 
   @Delete(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER)
   async remove(@Param('id') id: string, @Request() req): Promise<void> {
-    return this.usersService.remove(id, req.user);
+    const device = extractDeviceInfo(req.headers['user-agent'] || '');
+    return this.usersService.remove(id, req.user, device);
   }
 
   @Patch(':id/update-password')
@@ -136,7 +142,8 @@ export class UsersController {
     @Body() body: { newPassword: string },
     @Request() req,
   ): Promise<{ message: string }> {
-    await this.usersService.forgotPassword(id, body.newPassword);
+    const device = extractDeviceInfo(req.headers['user-agent'] || '');
+    await this.usersService.forgotPassword(id, body.newPassword, req.user, device);
     return { message: 'Password reset successfully' };
   }
 
