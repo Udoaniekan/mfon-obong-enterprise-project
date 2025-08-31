@@ -42,7 +42,7 @@ export class TransactionsController {
   ): Promise<Transaction> {
     return this.transactionsService.create(
       createTransactionDto,
-      req.user.userId,
+      req.user,
     );
   }
 
@@ -119,8 +119,9 @@ export class TransactionsController {
   async update(
     @Param('id') id: string,
     @Body() updateTransactionDto: UpdateTransactionDto,
+    @Request() req,
   ): Promise<Transaction> {
-    return this.transactionsService.update(id, updateTransactionDto);
+    return this.transactionsService.update(id, updateTransactionDto, req.user);
   }
 
   @Get('reports/sales')
@@ -148,8 +149,8 @@ export class TransactionsController {
   }
 
   @Patch(':id/waybill')
-  async assignWaybillNumber(@Param('id') id: string): Promise<any> {
-    return this.transactionsService.assignWaybillNumber(id);
+  async assignWaybillNumber(@Param('id') id: string, @Request() req): Promise<any> {
+    return this.transactionsService.assignWaybillNumber(id, req.user);
   }
 
   // Revenue Analytics Endpoints
