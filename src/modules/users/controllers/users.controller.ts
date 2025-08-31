@@ -129,6 +129,17 @@ export class UsersController {
     return { message: 'Password updated successfully' };
   }
 
+  @Patch(':id/forgot-password')
+  @Roles(UserRole.MAINTAINER)
+  async forgotPassword(
+    @Param('id') id: string,
+    @Body() body: { newPassword: string },
+    @Request() req,
+  ): Promise<{ message: string }> {
+    await this.usersService.forgotPassword(id, body.newPassword);
+    return { message: 'Password reset successfully' };
+  }
+
   @Patch(':id/profile-picture')
   @UseInterceptors(FileInterceptor('file'))
   async uploadProfilePicture(

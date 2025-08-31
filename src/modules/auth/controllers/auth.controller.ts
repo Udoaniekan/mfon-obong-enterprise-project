@@ -41,20 +41,8 @@ export class AuthController {
     };
   }
 
-  @Post('/request-otp')
-  async requestOtp(@Body() dto: OtpRequestDto) {
-    return this.authService.requestOtp(dto.email, dto.userId);
-  }
-
-  @Post('/verify-otp')
-  async verifyOtp(@Body() dto: OtpVerifyDto) {
-    return this.authService.verifyOtpAndResetPassword(
-      dto.email,
-      dto.userId,
-      dto.otp,
-      dto.newPassword,
-    );
-  }
+  // OTP endpoints removed - using admin password reset instead
+  // Admin can reset any user's password directly through user management
 
   @Post('/refresh')
   async refresh(@Body() refreshTokenDto: RefreshTokenDto, @Request() req, @Response({ passthrough: true }) res) {

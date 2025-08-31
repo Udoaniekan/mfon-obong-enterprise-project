@@ -13,13 +13,19 @@ async function bootstrap() {
   // Enable CORS with proper configuration
   app.enableCors({
     origin: [
+      // Development origins
       'http://localhost:3000',
       'http://localhost:3001', 
       'http://localhost:4200',
       'http://localhost:5173',
+      
+      // Current frontend deployments
       'https://frontend-six-liard-24.vercel.app',
       'https://mfon-obong-enterprises.pipeops.net',
-      // Add more production frontend domains here as needed
+      
+      // Production domains (add after domain purchase)
+      // 'https://yourdomain.com',
+      // 'https://www.yourdomain.com',
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
