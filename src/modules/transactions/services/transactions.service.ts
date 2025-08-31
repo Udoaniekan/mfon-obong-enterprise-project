@@ -38,7 +38,7 @@ export class TransactionsService {
 
   async create(
     createTransactionDto: CreateTransactionDto,
-    userId: string,
+    user: { userId: string; role: string; email?: string; name?: string },
   ): Promise<Transaction & { clientBalance?: number }> {
     let clientId: Types.ObjectId | undefined = undefined;
     let walkInClient: any = undefined;
@@ -155,7 +155,7 @@ export class TransactionsService {
       invoiceNumber: await this.generateInvoiceNumber(),
       clientId,
       walkInClient,
-      userId: new Types.ObjectId(userId),
+      userId: new Types.ObjectId(user.userId),
       items: processedItems,
       subtotal,
       discount: createTransactionDto.discount || 0,
@@ -204,8 +204,8 @@ export class TransactionsService {
       await this.systemActivityLogService.createLog({
         action: 'TRANSACTION_CREATED',
         details: `Transaction ${savedTransaction.invoiceNumber} created for ${clientName} (${createTransactionDto.type}) - Total: ${total}`,
-        performedBy: userId,
-        role: 'STAFF', // Default role, could be improved by fetching actual user role
+        performedBy: user.email || user.name || user.userId,
+        role: user.role,
         device: 'System',
       });
     } catch (logError) {
@@ -221,9 +221,9 @@ export class TransactionsService {
         savedTransaction._id.toString(),
         savedTransaction,
         {
-          id: userId,
-          email: 'staff@system.com', // Could be improved by getting actual user data
-          role: UserRole.STAFF,
+          id: user.userId,
+          email: user.email || 'unknown@system.com',
+          role: user.role as UserRole,
           branchId: createTransactionDto.branchId,
           branch: 'System Branch', // Could be improved by getting actual branch name
         }
@@ -323,6 +323,7 @@ export class TransactionsService {
   async update(
     id: string,
     updateTransactionDto: UpdateTransactionDto,
+    user: { userId: string; role: string; email?: string; name?: string },
   ): Promise<Transaction> {
     const transaction = await this.transactionModel.findById(id);
     if (!transaction) {
@@ -367,8 +368,8 @@ export class TransactionsService {
       await this.systemActivityLogService.createLog({
         action: 'TRANSACTION_UPDATED',
         details: `Transaction ${savedTransaction.invoiceNumber} updated - Changes: ${changes}`,
-        performedBy: 'System',
-        role: 'STAFF',
+        performedBy: user.email || user.name || user.userId,
+        role: user.role,
         device: 'System',
       });
     } catch (logError) {
@@ -539,7 +540,10 @@ export class TransactionsService {
     };
   }
 
-  async assignWaybillNumber(id: string): Promise<Transaction> {
+  async assignWaybillNumber(
+    id: string,
+    user: { userId: string; role: string; email?: string; name?: string },
+  ): Promise<Transaction> {
     const transaction = await this.transactionModel.findById(id);
     if (!transaction) throw new NotFoundException('Transaction not found');
     // Auto-generate waybill number
@@ -556,8 +560,8 @@ export class TransactionsService {
       await this.systemActivityLogService.createLog({
         action: 'WAYBILL_ASSIGNED',
         details: `Waybill number ${savedTransaction.waybillNumber} assigned to transaction ${savedTransaction.invoiceNumber}`,
-        performedBy: 'System',
-        role: 'STAFF',
+        performedBy: user.email || user.name || user.userId,
+        role: user.role,
         device: 'System',
       });
     } catch (logError) {
