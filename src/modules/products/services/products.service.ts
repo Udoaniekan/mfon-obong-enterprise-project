@@ -36,9 +36,17 @@ export class ProductsService {
     const branchId = createProductDto.branchId;
 
     // Validate that the unit matches the category
-    const category = await this.categoriesService.findById(
-      createProductDto.categoryId,
-    );
+    let category;
+    try {
+      category = await this.categoriesService.findById(
+        createProductDto.categoryId,
+      );
+    } catch (error) {
+      throw new BadRequestException(
+        `Invalid categoryId: ${createProductDto.categoryId}. Category does not exist.`,
+      );
+    }
+    
     if (!category.units.includes(createProductDto.unit)) {
       throw new BadRequestException(
         `Invalid unit ${createProductDto.unit} for category ${category.name}`,

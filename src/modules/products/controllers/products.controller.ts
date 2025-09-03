@@ -10,12 +10,12 @@ import {
   Request,
   BadRequestException,
 } from '@nestjs/common';
+import { extractDeviceInfo } from '../../system-activity-logs/utils/device-extractor.util';
 import { ProductsService } from '../services/products.service';
 import {
   CreateProductDto,
   UpdateProductDto,
   UpdateStockDto,
-  StockOperation,
 } from '../dto/product.dto';
 import { Product, ProductDocument } from '../schemas/product.schema';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -32,9 +32,10 @@ export class ProductsController {
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER)
   async create(
     @Body() createProductDto: CreateProductDto,
-    @Request() req,
+    @Request() req, 
   ): Promise<Product> {
-    return this.productsService.create(createProductDto, req.user);
+    const device = extractDeviceInfo(req.get('user-agent'));
+    return this.productsService.create(createProductDto, req.user, device);
   }
 
   @Get()
@@ -113,7 +114,8 @@ export class ProductsController {
     @Body() updateProductDto: UpdateProductDto,
     @Request() req,
   ): Promise<Product> {
-    return this.productsService.update(id, updateProductDto, req.user);
+    const device = extractDeviceInfo(req.get('user-agent'));
+    return this.productsService.update(id, updateProductDto, req.user, device);
   }
 
   @Patch(':id/stock')
@@ -123,18 +125,21 @@ export class ProductsController {
     @Body() updateStockDto: UpdateStockDto,
     @Request() req,
   ): Promise<Product> {
-    return this.productsService.updateStock(id, updateStockDto, req.user);
+    const device = extractDeviceInfo(req.get('user-agent'));
+    return this.productsService.updateStock(id, updateStockDto, req.user, device);
   }
 
   @Delete(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER)
   async remove(@Param('id') id: string, @Request() req): Promise<void> {
-    return this.productsService.remove(id, req.user);
+    const device = extractDeviceInfo(req.get('user-agent'));
+    return this.productsService.remove(id, req.user, device);
   }
 
   @Delete(':id/delete')
   @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER, UserRole.ADMIN)
   async hardRemove(@Param('id') id: string, @Request() req): Promise<void> {
-    return this.productsService.hardRemove(id, req.user);
+    const device = extractDeviceInfo(req.get('user-agent'));
+    return this.productsService.hardRemove(id, req.user, device);
   }
 }

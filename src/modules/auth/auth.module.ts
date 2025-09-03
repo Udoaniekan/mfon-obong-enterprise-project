@@ -11,6 +11,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { Otp, OtpSchema } from './schemas/otp.schema';
 import { SystemActivityLogModule } from '../system-activity-logs/system-activity-log.module';
 import { MaintenanceModeModule } from '../maintenance-mode/maintenance-mode.module';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @Module({
   imports: [
@@ -32,7 +33,7 @@ import { MaintenanceModeModule } from '../maintenance-mode/maintenance-mode.modu
     MongooseModule.forFeature([{ name: Otp.name, schema: OtpSchema }]),
   ],
   controllers: [AuthController],
-  providers: [AuthService, LocalStrategy, JwtStrategy],
-  exports: [AuthService],
+  providers: [AuthService, LocalStrategy, JwtStrategy, JwtAuthGuard],
+  exports: [AuthService, JwtAuthGuard],
 })
 export class AuthModule {}
