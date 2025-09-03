@@ -11,6 +11,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { Otp, OtpSchema } from './schemas/otp.schema';
 import { SystemActivityLogModule } from '../system-activity-logs/system-activity-log.module';
 import { MaintenanceModeModule } from '../maintenance-mode/maintenance-mode.module';
+import { SessionManagementModule } from '../session-management/session-management.module';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @Module({
@@ -19,6 +20,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
     PassportModule,
     SystemActivityLogModule,
     MaintenanceModeModule,
+    SessionManagementModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({

@@ -23,9 +23,9 @@ async function bootstrap() {
       'https://frontend-six-liard-24.vercel.app',
       'https://mfon-obong-enterprises.pipeops.net',
       
-      // Production domains (add after domain purchase)
-      // 'https://yourdomain.com',
-      // 'https://www.yourdomain.com',
+      // Production domains
+      'https://mfonobongenterprise.com',
+      'https://www.mfonobongenterprise.com',
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
