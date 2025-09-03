@@ -10,12 +10,14 @@ import { AuthService } from './services/auth.service';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Otp, OtpSchema } from './schemas/otp.schema';
 import { SystemActivityLogModule } from '../system-activity-logs/system-activity-log.module';
+import { MaintenanceModeModule } from '../maintenance-mode/maintenance-mode.module';
 
 @Module({
   imports: [
     UsersModule,
     PassportModule,
     SystemActivityLogModule,
+    MaintenanceModeModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({

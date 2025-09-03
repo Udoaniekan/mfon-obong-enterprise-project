@@ -1,11 +1,16 @@
 import { Strategy } from 'passport-local';
 import { PassportStrategy } from '@nestjs/passport';
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { AuthService } from '../services/auth.service';
+import { MaintenanceModeService } from '../../maintenance-mode/services/maintenance-mode.service';
+import { UserRole } from '../../../common/enums';
 
 @Injectable()
 export class LocalStrategy extends PassportStrategy(Strategy) {
-  constructor(private authService: AuthService) {
+  constructor(
+    private authService: AuthService,
+    private maintenanceModeService: MaintenanceModeService,
+  ) {
     super({
       usernameField: 'email',
     });
@@ -15,6 +20,20 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
       const user = await this.authService.validateUser(email, password);
       if (!user) {
         throw new UnauthorizedException('Invalid credentials');
+      }
+
+      // Check maintenance mode before allowing login
+      const maintenanceStatus = await this.maintenanceModeService.isMaintenanceMode();
+      if (maintenanceStatus.isActive) {
+        // Only allow SUPER_ADMIN and the MAINTAINER who activated it to login
+        if (user.role !== UserRole.SUPER_ADMIN && 
+            !(user.role === UserRole.MAINTAINER && maintenanceStatus.activatedBy === user._id?.toString())) {
+          throw new ForbiddenException({
+            message: 'System is currently in maintenance mode. Login is restricted to administrators only.',
+            statusCode: 503,
+            error: 'Service Unavailable - Maintenance Mode Active'
+          });
+        }
       }
 
       // Ensure we have the required fields for JWT
@@ -32,6 +51,9 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
       };
     } catch (error) {
       console.error('Validation error:', error);
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
       throw new UnauthorizedException(error.message);
     }
   }
