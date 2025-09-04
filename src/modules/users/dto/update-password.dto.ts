@@ -1,9 +1,9 @@
-import { IsNotEmpty, IsString, MinLength, Matches } from 'class-validator';
+import { IsNotEmpty, IsString, MinLength, Matches, IsOptional } from 'class-validator';
 
 export class UpdatePasswordDto {
-  @IsNotEmpty()
+  @IsOptional()
   @IsString()
-  previousPassword: string;
+  previousPassword?: string;
 
   @IsNotEmpty()
   @IsString()

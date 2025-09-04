@@ -28,6 +28,7 @@ import { UserProfilePictureService } from '../services/user-profile-picture.serv
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Express } from 'express';
 import { extractDeviceInfo } from '../../system-activity-logs/utils/device-extractor.util';
+import { AllowTemporaryPassword } from '../../auth/guards/force-password-change.guard';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -118,6 +119,7 @@ export class UsersController {
   }
 
   @Patch(':id/update-password')
+  @AllowTemporaryPassword()
   async updatePassword(
     @Param('id') id: string,
     @Body() updatePasswordDto: UpdatePasswordDto,
@@ -129,8 +131,8 @@ export class UsersController {
     }
     await this.usersService.updatePassword(
       id,
-      updatePasswordDto.previousPassword,
       updatePasswordDto.newPassword,
+      updatePasswordDto.previousPassword,
     );
     return { message: 'Password updated successfully' };
   }
@@ -139,12 +141,15 @@ export class UsersController {
   @Roles(UserRole.MAINTAINER)
   async forgotPassword(
     @Param('id') id: string,
-    @Body() body: { newPassword: string },
     @Request() req,
-  ): Promise<{ message: string }> {
+  ): Promise<{ message: string; temporaryPassword: string; expiresAt: Date }> {
     const device = extractDeviceInfo(req.headers['user-agent'] || '');
-    await this.usersService.forgotPassword(id, body.newPassword, req.user, device);
-    return { message: 'Password reset successfully' };
+    const result = await this.usersService.forgotPassword(id, req.user, device);
+    return { 
+      message: 'Temporary password generated successfully. User must change password within 24 hours.',
+      temporaryPassword: result.temporaryPassword,
+      expiresAt: result.expiresAt
+    };
   }
 
   @Patch(':id/profile-picture')

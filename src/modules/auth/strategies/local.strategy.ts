@@ -38,6 +38,18 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
         }
       }
 
+      // Check if temporary password has expired
+      if (user.isTemporaryPassword && user.temporaryPasswordExpiry) {
+        const now = new Date();
+        if (now > user.temporaryPasswordExpiry) {
+          throw new ForbiddenException({
+            message: 'Temporary password has expired. Please contact your administrator for a new password reset.',
+            statusCode: 403,
+            error: 'Temporary Password Expired'
+          });
+        }
+      }
+
       // Check session management (active hours) before allowing login
       const { isWithinHours, setting } = await this.sessionManagementService.isActiveHours();
 

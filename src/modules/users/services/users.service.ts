@@ -322,30 +322,60 @@ export class UsersService {
 
   async updatePassword(
     userId: string,
-    previousPassword: string,
     newPassword: string,
+    previousPassword?: string,
   ): Promise<void> {
     const user = await this.userModel.findById(userId);
     if (!user) {
       throw new NotFoundException('User not found');
     }
-    const isMatch = await bcrypt.compare(previousPassword, user.password);
-    if (!isMatch) {
-      throw new ConflictException('Wrong password');
+
+    // Different validation logic based on whether user has temporary password
+    if (user.mustChangePassword && user.isTemporaryPassword) {
+      // For temporary password users: no previous password needed
+      // Check if temporary password has expired
+      if (user.temporaryPasswordExpiry && new Date() > user.temporaryPasswordExpiry) {
+        throw new BadRequestException('Temporary password has expired. Please contact your administrator.');
+      }
+    } else {
+      // For regular users: previous password is required
+      if (!previousPassword) {
+        throw new BadRequestException('Previous password is required');
+      }
+      
+      // Verify previous password
+      const isMatch = await bcrypt.compare(previousPassword, user.password);
+      if (!isMatch) {
+        throw new ConflictException('Wrong password');
+      }
     }
     
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     
-    // Update only the password field to avoid validation issues
-    await this.userModel.findByIdAndUpdate(userId, { 
-      password: hashedPassword 
-    });
+    // Update password and reset temporary password flags
+    const updateData: any = { 
+      password: hashedPassword
+    };
+
+    // If updating from temporary password, reset the flags
+    if (user.mustChangePassword && user.isTemporaryPassword) {
+      updateData.isTemporaryPassword = false;
+      updateData.temporaryPasswordExpiry = undefined;
+      updateData.mustChangePassword = false;
+    }
+
+    await this.userModel.findByIdAndUpdate(userId, updateData);
 
     // Log password update activity
     try {
+      const actionType = user.isTemporaryPassword ? 'TEMPORARY_PASSWORD_UPDATED' : 'PASSWORD_UPDATED';
+      const details = user.isTemporaryPassword 
+        ? `User converted temporary password to permanent: ${user.name} (${user.email})`
+        : `User changed password: ${user.name} (${user.email})`;
+
       await this.systemActivityLogService.createLog({
-        action: 'PASSWORD_UPDATED',
-        details: `User changed password: ${user.name} (${user.email})`,
+        action: actionType,
+        details,
         performedBy: user.email,
         role: user.role,
         device: 'System',
@@ -355,29 +385,47 @@ export class UsersService {
     }
   }
 
+  private generateTemporaryPassword(): string {
+    // Generate a secure 8-character temporary password
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+    let tempPassword = '';
+    for (let i = 0; i < 8; i++) {
+      tempPassword += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return tempPassword;
+  }
+
   async forgotPassword(
     userId: string,
-    newPassword: string,
     performedByUser?: { email: string; role: string; name?: string },
     device?: string
-  ): Promise<void> {
+  ): Promise<{ temporaryPassword: string; expiresAt: Date }> {
     const user = await this.userModel.findById(userId);
     if (!user) {
       throw new NotFoundException('User not found');
     }
     
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    // Generate temporary password
+    const temporaryPassword = this.generateTemporaryPassword();
+    const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
     
-    // Update only the password field to avoid validation issues
+    // Set expiry to 24 hours from now
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + 24);
+    
+    // Update user with temporary password settings
     await this.userModel.findByIdAndUpdate(userId, { 
-      password: hashedPassword 
+      password: hashedPassword,
+      isTemporaryPassword: true,
+      temporaryPasswordExpiry: expiresAt,
+      mustChangePassword: true,
     });
 
     // Log password reset activity
     try {
       await this.systemActivityLogService.createLog({
-        action: 'PASSWORD_RESET',
-        details: `Password reset for user: ${user.name} (${user.email})`,
+        action: 'TEMPORARY_PASSWORD_RESET',
+        details: `Temporary password set for user: ${user.name} (${user.email}) - Expires in 24 hours`,
         performedBy: performedByUser?.email || performedByUser?.name || 'System',
         role: performedByUser?.role || 'MAINTAINER',
         device: device || 'System',
@@ -385,6 +433,11 @@ export class UsersService {
     } catch (logError) {
       // Don't fail if logging fails
     }
+
+    return {
+      temporaryPassword,
+      expiresAt,
+    };
   }
 
   async getUsersByBranch(branchId: string): Promise<User[]> {

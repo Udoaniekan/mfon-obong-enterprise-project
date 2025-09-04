@@ -29,7 +29,6 @@ export class JwtAuthGuard extends AuthGuard('jwt') implements CanActivate {
     ]);
 
     if (bypassSessionManagement) {
-      console.log('Bypassing session management for this endpoint');
       return true;
     }
 
@@ -53,13 +52,11 @@ export class JwtAuthGuard extends AuthGuard('jwt') implements CanActivate {
           }
 
           // Block all other users
-          console.log('Blocking user - outside active hours:', user.email);
           return false;
         }
       }
     } catch (error) {
       // If there's any error in checking, allow access (fail-open approach)
-      console.error('Error in JwtAuthGuard session checking:', error);
     }
     
     return true;

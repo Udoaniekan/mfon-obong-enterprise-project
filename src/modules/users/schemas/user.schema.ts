@@ -56,6 +56,16 @@ export class User {
   isBlocked?: boolean;
   @Prop()
   blockReason?: string;
+
+  // Temporary password fields
+  @Prop({ default: false })
+  isTemporaryPassword?: boolean;
+
+  @Prop()
+  temporaryPasswordExpiry?: Date;
+
+  @Prop({ default: false })
+  mustChangePassword?: boolean;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

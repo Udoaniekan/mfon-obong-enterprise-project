@@ -89,12 +89,12 @@ export class AuthService {
     otpDoc.used = true;
     await otpDoc.save();
 
-    // Reset the user's password
-    await this.usersService.forgotPassword(userId, newPassword);
+    // Reset the user's password with temporary password
+    const verifyingUser = await this.usersService.findByEmail(email);
+    const resetResult = await this.usersService.forgotPassword(userId, { email: verifyingUser.email, role: verifyingUser.role, name: verifyingUser.name }, device);
 
     // Log OTP verification and password reset
     try {
-      const verifyingUser = await this.usersService.findByEmail(email);
       await this.systemActivityLogService.createLog({
         action: 'OTP_VERIFIED',
         details: `OTP verified and password reset completed for: ${email}`,

@@ -62,12 +62,6 @@ export class SessionManagementController {
   @Delete('active-hours')
   @Roles(UserRole.MAINTAINER)
   async deactivateActiveHours(@Request() req) {
-    console.log('DELETE endpoint - User from request:', {
-      email: req.user?.email,
-      role: req.user?.role,
-      _id: req.user?._id,
-      userId: req.user?.userId
-    });
     const device = extractDeviceInfo(req.get('user-agent'));
     return this.sessionManagementService.deactivateActiveHours(req.user, device);
   }
