@@ -14,10 +14,12 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { UserRole } from '../../../common/enums';
 import { Roles } from '../../../decorators/roles.decorators';
+import { BypassSessionManagement } from '../../../decorators/bypass-session-management.decorator';
 import { extractDeviceInfo } from '../../system-activity-logs/utils/device-extractor.util';
 
 @Controller('session-management')
 @UseGuards(JwtAuthGuard, RolesGuard)
+@BypassSessionManagement()
 export class SessionManagementController {
   constructor(
     private readonly sessionManagementService: SessionManagementService,
@@ -60,6 +62,12 @@ export class SessionManagementController {
   @Delete('active-hours')
   @Roles(UserRole.MAINTAINER)
   async deactivateActiveHours(@Request() req) {
+    console.log('DELETE endpoint - User from request:', {
+      email: req.user?.email,
+      role: req.user?.role,
+      _id: req.user?._id,
+      userId: req.user?.userId
+    });
     const device = extractDeviceInfo(req.get('user-agent'));
     return this.sessionManagementService.deactivateActiveHours(req.user, device);
   }

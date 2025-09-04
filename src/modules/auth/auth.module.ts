@@ -11,7 +11,9 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { Otp, OtpSchema } from './schemas/otp.schema';
 import { SystemActivityLogModule } from '../system-activity-logs/system-activity-log.module';
 import { MaintenanceModeModule } from '../maintenance-mode/maintenance-mode.module';
-import { SessionManagementModule } from '../session-management/session-management.module';
+import { SessionManagementService } from '../session-management/services/session-management.service';
+import { MongooseModule as SessionMongooseModule } from '@nestjs/mongoose';
+import { SessionManagement, SessionManagementSchema } from '../session-management/schemas/session-management.schema';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @Module({
@@ -20,7 +22,6 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
     PassportModule,
     SystemActivityLogModule,
     MaintenanceModeModule,
-    SessionManagementModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
@@ -32,10 +33,13 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
       }),
       inject: [ConfigService],
     }),
-    MongooseModule.forFeature([{ name: Otp.name, schema: OtpSchema }]),
+    MongooseModule.forFeature([
+      { name: Otp.name, schema: OtpSchema },
+      { name: SessionManagement.name, schema: SessionManagementSchema }
+    ]),
   ],
   controllers: [AuthController],
-  providers: [AuthService, LocalStrategy, JwtStrategy, JwtAuthGuard],
+  providers: [AuthService, LocalStrategy, JwtStrategy, JwtAuthGuard, SessionManagementService],
   exports: [AuthService, JwtAuthGuard],
 })
 export class AuthModule {}

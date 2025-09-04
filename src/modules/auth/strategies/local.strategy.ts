@@ -3,6 +3,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { Injectable, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { AuthService } from '../services/auth.service';
 import { MaintenanceModeService } from '../../maintenance-mode/services/maintenance-mode.service';
+import { SessionManagementService } from '../../session-management/services/session-management.service';
 import { UserRole } from '../../../common/enums';
 
 @Injectable()
@@ -10,6 +11,7 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
   constructor(
     private authService: AuthService,
     private maintenanceModeService: MaintenanceModeService,
+    private sessionManagementService: SessionManagementService,
   ) {
     super({
       usernameField: 'email',
@@ -36,6 +38,37 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
         }
       }
 
+      // Check session management (active hours) before allowing login
+      const { isWithinHours, setting } = await this.sessionManagementService.isActiveHours();
+
+      if (!isWithinHours && setting) {
+        // SUPER_ADMIN and MAINTAINER are always exempted from session hours
+        if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.MAINTAINER) {
+          // Allow login
+        } else {
+          const currentTime = new Date().toLocaleString('en-US', { 
+            timeZone: setting.timezone || 'UTC',
+            hour12: true,
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+
+          const activeHours = `${setting.startTime} - ${setting.endTime} (${setting.timezone})`;
+
+          throw new ForbiddenException({
+            message: `Login denied: You can only login during active hours (${activeHours}). Current time: ${currentTime}`,
+            statusCode: 403,
+            error: 'Outside Active Hours',
+            activeHours: {
+              startTime: setting.startTime,
+              endTime: setting.endTime,
+              timezone: setting.timezone,
+            },
+            currentTime: currentTime,
+          });
+        }
+      }
+
       // Ensure we have the required fields for JWT
       if (!user._id && !user.id) {
         console.error('User object missing ID:', user);
@@ -50,7 +83,6 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
         branchId: user.branchId,
       };
     } catch (error) {
-      console.error('Validation error:', error);
       if (error instanceof ForbiddenException) {
         throw error;
       }

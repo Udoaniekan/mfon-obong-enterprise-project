@@ -33,11 +33,9 @@ export class SessionManagementGuard implements CanActivate {
         return true;
       }
 
-      // The MAINTAINER who set the active hours is exempted
-      if (user.role === UserRole.MAINTAINER && setting) {
-        if (user._id?.toString() === setting.setBy.toString()) {
-          return true;
-        }
+      // Any MAINTAINER is exempted from session hours
+      if (user.role === UserRole.MAINTAINER) {
+        return true;
       }
 
       // Block all other users with a detailed message
