@@ -36,7 +36,7 @@ export class MaintenanceModeService {
 
     return {
       isActive: mode.isActive,
-      activatedBy: mode.isActive ? mode.activatedBy.toString() : undefined
+      activatedBy: mode.isActive && mode.activatedBy ? mode.activatedBy.toString() : undefined
     };
   }
 

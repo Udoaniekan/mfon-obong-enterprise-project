@@ -20,6 +20,7 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
   async validate(email: string, password: string): Promise<any> {
     try {
       const user = await this.authService.validateUser(email, password);
+      
       if (!user) {
         throw new UnauthorizedException('Invalid credentials');
       }
@@ -27,9 +28,8 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
       // Check maintenance mode before allowing login
       const maintenanceStatus = await this.maintenanceModeService.isMaintenanceMode();
       if (maintenanceStatus.isActive) {
-        // Only allow SUPER_ADMIN and the MAINTAINER who activated it to login
-        if (user.role !== UserRole.SUPER_ADMIN && 
-            !(user.role === UserRole.MAINTAINER && maintenanceStatus.activatedBy === user._id?.toString())) {
+        // Only allow SUPER_ADMIN and MAINTAINER to login during maintenance
+        if (user.role !== UserRole.SUPER_ADMIN && user.role !== UserRole.MAINTAINER) {
           throw new ForbiddenException({
             message: 'System is currently in maintenance mode. Login is restricted to administrators only.',
             statusCode: 503,
@@ -86,6 +86,7 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
         console.error('User object missing ID:', user);
         throw new Error('Invalid user object structure');
       }
+      
       return {
         _id: user._id || user.id,
         email: user.email,

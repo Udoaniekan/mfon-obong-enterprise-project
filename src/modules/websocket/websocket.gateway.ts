@@ -51,7 +51,7 @@ export class AppWebSocketGateway
       }
 
       const decoded = this.jwtService.verify(token);
-      client.userId = decoded.userId;
+      client.userId = decoded.sub; // JWT uses 'sub' field, not 'userId'
       client.userEmail = decoded.email;
       client.userRole = decoded.role;
       client.branchId = decoded.branchId;
