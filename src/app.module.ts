@@ -16,6 +16,7 @@ import { BranchesModule } from './modules/branches/branches.module';
 import { SystemActivityLogModule } from './modules/system-activity-logs/system-activity-log.module';
 import { MaintenanceModeModule } from './modules/maintenance-mode/maintenance-mode.module';
 import { SessionManagementModule } from './modules/session-management/session-management.module';
+import { ColumnSettingsModule } from './modules/column-settings/column-settings.module';
 import { HealthModule } from './modules/health/health.module';
 import { WebSocketModule } from './modules/websocket/websocket.module';
 import { databaseConfig, jwtConfig } from './config/configuration';
@@ -46,6 +47,7 @@ import { databaseConfig, jwtConfig } from './config/configuration';
     SystemActivityLogModule,
     MaintenanceModeModule,
     SessionManagementModule,
+    ColumnSettingsModule,
     HealthModule,
     WebSocketModule,
   ],
