@@ -6,6 +6,7 @@ import { ToggleMaintenanceModeDto } from '../dto/maintenance-mode.dto';
 import { UserDocument } from '../../users/schemas/user.schema';
 import { SystemActivityLogService } from '../../system-activity-logs/services/system-activity-log.service';
 import { extractDeviceInfo } from '../../system-activity-logs/utils/device-extractor.util';
+import { Notification, NotificationDocument } from '../schemas/notification.schema';
 
 @Injectable()
 export class MaintenanceModeService {
@@ -13,6 +14,7 @@ export class MaintenanceModeService {
     @InjectModel(MaintenanceMode.name)
     private readonly maintenanceModeModel: Model<MaintenanceModeDocument>,
     private readonly systemActivityLogService: SystemActivityLogService,
+    @InjectModel(Notification.name) private notificationModel: Model<NotificationDocument>,
   ) {}
 
   async getCurrentMode(): Promise<MaintenanceModeDocument | null> {
@@ -114,5 +116,19 @@ export class MaintenanceModeService {
       .populate('deactivatedBy', 'name email')
       .limit(20) // Last 20 maintenance mode changes
       .exec();
+  }
+
+  async notifyMaintainer(email: string, message?: string): Promise<string> {
+    const notification = new this.notificationModel({
+      userEmail: email,
+      message: message || 'A user has requested support.',
+    });
+    await notification.save();
+
+    return `Notification sent to maintainer dashboard for email: ${email}`;
+  }
+
+  async getNotifications(): Promise<Notification[]> {
+    return this.notificationModel.find().sort({ createdAt: -1 }).exec();
   }
 }
