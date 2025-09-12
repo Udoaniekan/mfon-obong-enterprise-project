@@ -82,4 +82,28 @@ export class MaintenanceModeController {
   async getNotifications() {
     return this.maintenanceModeService.getNotifications();
   }
+
+  @Post('/notify-branch-admin')
+  @Roles(UserRole.MAINTAINER)
+  async notifyBranchAdmin(
+    @Body() body: { email: string; branch: string; temporaryPassword: string },
+  ) {
+    // Validate email, branch, and temporary password
+    if (!body.email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(body.email)) {
+      throw new BadRequestException('Invalid email address');
+    }
+    if (!body.branch || body.branch.trim().length === 0) {
+      throw new BadRequestException('Branch cannot be empty');
+    }
+    if (!body.temporaryPassword || body.temporaryPassword.trim().length === 0) {
+      throw new BadRequestException('Temporary password cannot be empty');
+    }
+
+    // Notify branch admin
+    return this.maintenanceModeService.notifyBranchAdmin(
+      body.email,
+      body.branch,
+      body.temporaryPassword,
+    );
+  }
 }

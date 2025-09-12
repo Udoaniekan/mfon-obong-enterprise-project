@@ -1,12 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { MaintenanceMode, MaintenanceModeDocument } from '../schemas/maintenance-mode.schema';
 import { ToggleMaintenanceModeDto } from '../dto/maintenance-mode.dto';
-import { UserDocument } from '../../users/schemas/user.schema';
+import { User, UserDocument } from '../../users/schemas/user.schema';
 import { SystemActivityLogService } from '../../system-activity-logs/services/system-activity-log.service';
 import { extractDeviceInfo } from '../../system-activity-logs/utils/device-extractor.util';
 import { Notification, NotificationDocument } from '../schemas/notification.schema';
+import { BranchNotification, BranchNotificationDocument } from '../../notifications/schemas/branch-notification.schema';
 
 @Injectable()
 export class MaintenanceModeService {
@@ -15,6 +16,8 @@ export class MaintenanceModeService {
     private readonly maintenanceModeModel: Model<MaintenanceModeDocument>,
     private readonly systemActivityLogService: SystemActivityLogService,
     @InjectModel(Notification.name) private notificationModel: Model<NotificationDocument>,
+    @InjectModel(BranchNotification.name) private branchNotificationModel: Model<BranchNotificationDocument>,
+    @InjectModel(User.name) private userModel: Model<UserDocument>,
   ) {}
 
   async getCurrentMode(): Promise<MaintenanceModeDocument | null> {
@@ -130,5 +133,32 @@ export class MaintenanceModeService {
 
   async getNotifications(): Promise<Notification[]> {
     return this.notificationModel.find().sort({ createdAt: -1 }).exec();
+  }
+
+  async notifyBranchAdmin(email: string, branch: string, temporaryPassword: string): Promise<string> {
+    try {
+      // Validate the branch ID
+      if (!Types.ObjectId.isValid(branch)) {
+        throw new BadRequestException(`Invalid branch ID provided: ${branch}`);
+      }
+
+      // Fetch the user by email to get their ObjectId
+      const user = await this.userModel.findOne({ email }).exec();
+      if (!user) {
+        throw new NotFoundException(`User with email ${email} does not exist in the system. Please verify the email address.`);
+      }
+
+      const notification = new this.branchNotificationModel({
+        branch: new Types.ObjectId(branch),
+        message: `A temporary password has been generated for a user in your branch.`,
+        temporaryPassword: temporaryPassword,
+        createdBy: user._id, // Use the user's ObjectId
+      });
+      await notification.save();
+
+      return `Notification sent to branch admin for branch: ${branch}`;
+    } catch (error) {
+      throw error;
+    }
   }
 }

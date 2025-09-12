@@ -19,6 +19,10 @@ import { WebSocketModule } from '../websocket/websocket.module';
   ],
   providers: [UsersService, UserProfilePictureService],
   controllers: [UsersController],
-  exports: [UsersService, UserProfilePictureService],
+  exports: [
+    UsersService,
+    UserProfilePictureService,
+    MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
+  ],
 })
 export class UsersModule {}

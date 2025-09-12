@@ -15,7 +15,6 @@ import {
 import { UsersService } from '../services/users.service';
 import { CreateUserDto, UpdateUserDto } from '../dto/user.dto';
 import { BlockUserDto } from '../dto/block-user.dto';
-import { ForgotPasswordDto } from '../dto/forgot-password.dto';
 import { UpdatePasswordDto } from '../dto/update-password.dto';
 // ...existing code...
 // ...existing code...

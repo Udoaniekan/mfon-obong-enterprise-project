@@ -11,6 +11,12 @@ export class Notification {
 
   @Prop({ required: false })
   message: string;
+
+  @Prop({ required: false })
+  branch: string;
+
+  @Prop({ required: false })
+  temporaryPassword: string;
 }
 
 export type NotificationDocument = Notification & Document;

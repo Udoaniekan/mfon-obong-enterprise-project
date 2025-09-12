@@ -20,6 +20,7 @@ import { ColumnSettingsModule } from './modules/column-settings/column-settings.
 import { HealthModule } from './modules/health/health.module';
 import { WebSocketModule } from './modules/websocket/websocket.module';
 import { databaseConfig, jwtConfig } from './config/configuration';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 // ... your other imports
 
 @Module({
@@ -42,6 +43,7 @@ import { databaseConfig, jwtConfig } from './config/configuration';
     ProductsModule,
     ClientsModule,
     TransactionsModule,
+
     ReportsModule,
     SeedModule,
     SystemActivityLogModule,
@@ -50,6 +52,7 @@ import { databaseConfig, jwtConfig } from './config/configuration';
     ColumnSettingsModule,
     HealthModule,
     WebSocketModule,
+    NotificationsModule
   ],
   controllers: [AppController],
   providers: [AppService],
