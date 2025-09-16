@@ -23,7 +23,7 @@ export class SystemActivityLogController {
   }
 
   @Get()
-  @Roles(UserRole.MAINTAINER, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.MAINTAINER, UserRole.SUPER_ADMIN, UserRole.ADMIN)
   async getAllLogs(): Promise<SystemActivityLog[]> {
     return this.systemActivityLogService.getLogs();
   }
