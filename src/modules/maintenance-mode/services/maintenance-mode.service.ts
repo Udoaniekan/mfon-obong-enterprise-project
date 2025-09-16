@@ -50,6 +50,9 @@ export class MaintenanceModeService {
     currentUser: UserDocument,
     device?: string,
   ): Promise<{ isActive: boolean; message: string }> {
+    if (!currentUser || !currentUser._id) {
+      throw new Error('Invalid or missing currentUser in toggleMaintenanceMode');
+    }
     const currentMode = await this.getCurrentMode();
     const newState = !currentMode?.isActive || false;
 
@@ -79,7 +82,7 @@ export class MaintenanceModeService {
 
       return {
         isActive: true,
-        message: 'Maintenance mode activated. Only MAINTAINER and SUPER_ADMIN can access the system.'
+        message: 'Maintenance mode activated. Only MAINTAINER can access the system.'
       };
     } else {
       // Deactivating maintenance mode

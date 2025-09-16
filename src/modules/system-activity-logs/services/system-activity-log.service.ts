@@ -44,13 +44,15 @@ export class SystemActivityLogService {
     }
   }
 
-  async getLogs(): Promise<SystemActivityLog[]> {
+  async getLogs(page = 1, limit = 20): Promise<SystemActivityLog[]> {
     try {
-      this.logger.log('Fetching all system activity logs');
+      this.logger.log(`Fetching system activity logs: page ${page}, limit ${limit}`);
 
       const logs = await this.systemActivityLogModel
         .find()
         .sort({ timestamp: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
         .exec();
 
       this.logger.log(`Found ${logs.length} log entries`);

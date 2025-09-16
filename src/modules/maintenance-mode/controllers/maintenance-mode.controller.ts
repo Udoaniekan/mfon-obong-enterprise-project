@@ -5,6 +5,7 @@ import {
   Body,
   Request,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
 import { MaintenanceModeService } from '../services/maintenance-mode.service';
 import { ToggleMaintenanceModeDto } from '../dto/maintenance-mode.dto';
@@ -14,8 +15,10 @@ import { UserRole } from '../../../common/enums';
 import { extractDeviceInfo } from '../../system-activity-logs/utils/device-extractor.util';
 import { BypassMaintenance } from '../../../decorators/bypass-maintenance.decorator';
 import { UsersService } from '../../users/services/users.service';
+import { JwtAuthGuard } from 'src/modules/auth/guards/jwt-auth.guard';
 
 @Controller('maintenance-mode')
+@UseGuards(JwtAuthGuard, RolesGuard)
 @BypassMaintenance()
 export class MaintenanceModeController {
   constructor(

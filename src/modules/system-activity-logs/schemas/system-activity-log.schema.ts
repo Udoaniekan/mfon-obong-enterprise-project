@@ -26,3 +26,6 @@ export class SystemActivityLog {
 
 export const SystemActivityLogSchema =
   SchemaFactory.createForClass(SystemActivityLog);
+
+// Add TTL index to auto-delete logs older than 30 days (2592000 seconds)
+SystemActivityLogSchema.index({ timestamp: 1 }, { expireAfterSeconds: 2592000 });

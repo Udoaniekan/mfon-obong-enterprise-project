@@ -12,6 +12,7 @@ export class MaintenanceModeGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+
     const request = context.switchToHttp().getRequest();
     const user = request.user;
 
@@ -20,6 +21,7 @@ export class MaintenanceModeGuard implements CanActivate {
     }
 
     // Check if this endpoint bypasses maintenance mode
+
     const bypassMaintenance = this.reflector.getAllAndOverride<boolean>(BYPASS_MAINTENANCE_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -30,19 +32,22 @@ export class MaintenanceModeGuard implements CanActivate {
     }
 
     // Get current maintenance mode status
-    const maintenanceStatus = await this.maintenanceModeService.isMaintenanceMode();
+
+  const maintenanceStatus = await this.maintenanceModeService.isMaintenanceMode();
 
     // If maintenance mode is not active, allow access
+
     if (!maintenanceStatus.isActive) {
       return true;
     }
 
     // If maintenance mode is active, only allow SUPER_ADMIN and the MAINTAINER who activated it
-    if (user.role === UserRole.SUPER_ADMIN) {
-      return true;
-    }
+    // if (user.role === UserRole.SUPER_ADMIN) {
+    //   return true;
+    // }
 
-    if (user.role === UserRole.MAINTAINER && maintenanceStatus.activatedBy === user.userId) {
+
+    if (user.role === UserRole.MAINTAINER) {
       return true;
     }
 

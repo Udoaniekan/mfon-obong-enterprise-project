@@ -56,19 +56,16 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       if (currentUser.isBlocked) {
         throw new UnauthorizedException(`Account has been suspended. Reason: ${currentUser.blockReason || 'Contact administrator for details.'}`);
       }
+      // Return the full user object so downstream code has all fields
+      return {
+        ...(currentUser.toObject ? currentUser.toObject() : currentUser),
+        userId: payload.sub, // keep for compatibility
+      };
     } catch (error) {
       if (error instanceof UnauthorizedException) {
         throw error;
       }
       throw new UnauthorizedException('Invalid user');
     }
-
-    return {
-      userId: payload.sub,
-      email: payload.email,
-      role: payload.role,
-      branch: payload.branch,
-      branchId: payload.branchId,
-    };
   }
 }

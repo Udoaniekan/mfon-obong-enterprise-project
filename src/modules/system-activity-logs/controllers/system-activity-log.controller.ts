@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Query } from '@nestjs/common';
 import { SystemActivityLogService } from '../services/system-activity-log.service';
 import { SystemActivityLog } from '../schemas/system-activity-log.schema';
 import { CreateSystemActivityLogDto } from '../dto/system-activity-log.dto';
@@ -24,7 +24,10 @@ export class SystemActivityLogController {
 
   @Get()
   @Roles(UserRole.MAINTAINER, UserRole.SUPER_ADMIN, UserRole.ADMIN)
-  async getAllLogs(): Promise<SystemActivityLog[]> {
-    return this.systemActivityLogService.getLogs();
+  async getAllLogs(
+    @Query('page') page = 1,
+    @Query('limit') limit = 20,
+  ): Promise<SystemActivityLog[]> {
+    return this.systemActivityLogService.getLogs(Number(page), Number(limit));
   }
 }
