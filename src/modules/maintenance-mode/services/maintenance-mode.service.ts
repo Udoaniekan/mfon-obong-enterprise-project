@@ -24,7 +24,7 @@ export class MaintenanceModeService {
     // Get the most recent maintenance mode record
     const mode = await this.maintenanceModeModel
       .findOne()
-      .sort({ createdAt: -1 })
+      .sort({ activatedAt: -1 })
       .populate('activatedBy', 'name email')
       .populate('deactivatedBy', 'name email')
       .exec();
@@ -88,7 +88,7 @@ export class MaintenanceModeService {
       };
     } else {
       // DEACTIVATING: Only update the latest active record
-      const activeMode = await this.maintenanceModeModel.findOne({ isActive: true }).sort({ createdAt: -1 });
+      const activeMode = await this.maintenanceModeModel.findOne({ isActive: true }).sort({ activatedAt: -1 });
       if (activeMode) {
         activeMode.isActive = false;
         activeMode.deactivatedBy = new Types.ObjectId(currentUser._id?.toString());
