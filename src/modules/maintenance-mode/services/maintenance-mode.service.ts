@@ -57,14 +57,16 @@ export class MaintenanceModeService {
     const newState = !currentMode?.isActive || false;
 
     if (newState) {
-      // Activating maintenance mode
+      // ACTIVATING: First, set all previous records to isActive: false (cleanup)
+      await this.maintenanceModeModel.updateMany({ isActive: true }, { $set: { isActive: false } });
+
+      // Now create a new active record
       const newMode = new this.maintenanceModeModel({
         isActive: true,
         activatedBy: new Types.ObjectId(currentUser._id?.toString()),
         reason: toggleDto.reason || 'Maintenance mode activated',
         activatedAt: new Date(),
       });
-
       await newMode.save();
 
       // Log activation
@@ -77,7 +79,7 @@ export class MaintenanceModeService {
           device: device || 'System',
         });
       } catch (logError) {
-        console.error('Failed to log maintenance mode activation:', logError);
+        // Optionally log error
       }
 
       return {
@@ -85,13 +87,14 @@ export class MaintenanceModeService {
         message: 'Maintenance mode activated. Only MAINTAINER can access the system.'
       };
     } else {
-      // Deactivating maintenance mode
-      if (currentMode) {
-        currentMode.isActive = false;
-        currentMode.deactivatedBy = new Types.ObjectId(currentUser._id?.toString());
-        currentMode.deactivatedAt = new Date();
-        currentMode.deactivationReason = toggleDto.reason || 'Maintenance mode deactivated';
-        await currentMode.save();
+      // DEACTIVATING: Only update the latest active record
+      const activeMode = await this.maintenanceModeModel.findOne({ isActive: true }).sort({ createdAt: -1 });
+      if (activeMode) {
+        activeMode.isActive = false;
+        activeMode.deactivatedBy = new Types.ObjectId(currentUser._id?.toString());
+        activeMode.deactivatedAt = new Date();
+        activeMode.deactivationReason = toggleDto.reason || 'Maintenance mode deactivated';
+        await activeMode.save();
       }
 
       // Log deactivation
@@ -104,7 +107,7 @@ export class MaintenanceModeService {
           device: device || 'System',
         });
       } catch (logError) {
-        console.error('Failed to log maintenance mode deactivation:', logError);
+        // Optionally log error
       }
 
       return {
