@@ -540,19 +540,29 @@ export class TransactionsService {
     };
   }
 
-  async assignWaybillNumber(
-    id: string,
-    user: { userId: string; role: string; email?: string; name?: string },
-  ): Promise<Transaction> {
-    const transaction = await this.transactionModel.findById(id);
-    if (!transaction) throw new NotFoundException('Transaction not found');
-    // Auto-generate waybill number
+  /**
+   * Generates a new waybill number (does not save to DB)
+   */
+  async generateWaybillNumber(): Promise<string> {
     const date = new Date();
     const prefix = `WB${date.getFullYear()}${(date.getMonth() + 1).toString().padStart(2, '0')}${date.getDate().toString().padStart(2, '0')}`;
     const count = await this.transactionModel.countDocuments({
       waybillNumber: { $regex: `^${prefix}` },
     });
-    transaction.waybillNumber = `${prefix}-${(count + 1).toString().padStart(4, '0')}`;
+    return `${prefix}-${(count + 1).toString().padStart(4, '0')}`;
+  }
+
+  /**
+   * Assigns a provided waybill number to a transaction and saves it
+   */
+  async assignWaybillNumber(
+    id: string,
+    waybillNumber: string,
+    user: { userId: string; role: string; email?: string; name?: string },
+  ): Promise<Transaction> {
+    const transaction = await this.transactionModel.findById(id);
+    if (!transaction) throw new NotFoundException('Transaction not found');
+    transaction.waybillNumber = waybillNumber;
     const savedTransaction = await transaction.save();
 
     // Log waybill assignment activity

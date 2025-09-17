@@ -29,6 +29,43 @@ import { Roles } from 'src/decorators/roles.decorators';
 export class TransactionsController {
   constructor(private readonly transactionsService: TransactionsService) {}
 
+
+  /**
+   * Generate a new waybill number (does not save it)
+   */
+  @Get('generate-waybill-number')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.MAINTAINER,
+    UserRole.STAFF,
+  )
+  async generateWaybillNumber() {
+    const waybillNumber = await this.transactionsService.generateWaybillNumber();
+    return { waybillNumber };
+  }
+
+  /**
+   * Assign a provided waybill number to a transaction
+   */
+  @Patch(':id/assign-waybill')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.MAINTAINER,
+    UserRole.STAFF,
+  )
+  async assignWaybillNumber(
+    @Param('id') id: string,
+    @Body('waybillNumber') waybillNumber: string,
+    @Request() req,
+  ) {
+    if (!waybillNumber) {
+      throw new BadRequestException('waybillNumber is required');
+    }
+    return this.transactionsService.assignWaybillNumber(id, waybillNumber, req.user);
+  }
+
   @Post()
   @Roles(
     UserRole.SUPER_ADMIN,
@@ -98,6 +135,10 @@ export class TransactionsController {
     return this.transactionsService.findByClientId(clientId);
   }
 
+
+
+
+
   @Get(':id')
   @Roles(
     UserRole.SUPER_ADMIN,
@@ -148,10 +189,7 @@ export class TransactionsController {
     );
   }
 
-  @Patch(':id/waybill')
-  async assignWaybillNumber(@Param('id') id: string, @Request() req): Promise<any> {
-    return this.transactionsService.assignWaybillNumber(id, req.user);
-  }
+
 
   // Revenue Analytics Endpoints
   @Get('revenue/total')
