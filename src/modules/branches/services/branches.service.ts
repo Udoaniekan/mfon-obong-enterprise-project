@@ -32,7 +32,7 @@ export class BranchesService {
       try {
         await this.systemActivityLogService.createLog({
           action: 'BRANCH_CREATED',
-          details: ` ${savedBranch.name} has been created. Location: ${savedBranch.address}`,
+          details: `${savedBranch.name} has been created. Location: ${savedBranch.address}`,
           performedBy: currentUser?.email || currentUser?.name || 'System',
           role: currentUser?.role || 'SYSTEM',
           device: extractDeviceInfo(userAgent) || '',
