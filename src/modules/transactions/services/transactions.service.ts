@@ -22,6 +22,7 @@ import {
   QueryTransactionsDto,
   CalculateTransactionDto,
 } from '../dto/transaction.dto';
+import { extractDeviceInfo } from 'src/modules/system-activity-logs/utils/device-extractor.util';
 
 @Injectable()
 export class TransactionsService {
@@ -39,6 +40,7 @@ export class TransactionsService {
   async create(
     createTransactionDto: CreateTransactionDto,
     user: { userId: string; role: string; email?: string; name?: string },
+    userAgent: string
   ): Promise<Transaction & { clientBalance?: number }> {
     let clientId: Types.ObjectId | undefined = undefined;
     let walkInClient: any = undefined;
@@ -206,7 +208,7 @@ export class TransactionsService {
         details: `Transaction ${savedTransaction.invoiceNumber} created for ${clientName} (${createTransactionDto.type}) - Total: ${total}`,
         performedBy: user.email || user.name || user.userId,
         role: user.role,
-        device: 'System',
+        device: extractDeviceInfo(userAgent) || "",
       });
     } catch (logError) {
       console.error('Failed to log transaction creation:', logError);
@@ -324,6 +326,7 @@ export class TransactionsService {
     id: string,
     updateTransactionDto: UpdateTransactionDto,
     user: { userId: string; role: string; email?: string; name?: string },
+    userAgent?: string
   ): Promise<Transaction> {
     const transaction = await this.transactionModel.findById(id);
     if (!transaction) {
@@ -370,7 +373,7 @@ export class TransactionsService {
         details: `Transaction ${savedTransaction.invoiceNumber} updated - Changes: ${changes}`,
         performedBy: user.email || user.name || user.userId,
         role: user.role,
-        device: 'System',
+        device: extractDeviceInfo(userAgent) || '',
       });
     } catch (logError) {
       console.error('Failed to log transaction update:', logError);

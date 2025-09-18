@@ -9,21 +9,39 @@ import { Category, CategoryDocument } from '../schemas/category.schema';
 import { CreateCategoryDto, UpdateCategoryDto } from '../dto/category.dto';
 import { UserDocument } from '../../users/schemas/user.schema';
 import { UserRole } from '../../../common/enums';
+import { SystemActivityLogService } from 'src/modules/system-activity-logs/services/system-activity-log.service';
+import { extractDeviceInfo } from 'src/modules/system-activity-logs/utils/device-extractor.util';
 
 @Injectable()
 export class CategoriesService {
   constructor(
     @InjectModel(Category.name) private categoryModel: Model<CategoryDocument>,
+    private readonly systemActivityLogService: SystemActivityLogService,
   ) {}
 
   async create(
     createCategoryDto: CreateCategoryDto,
     currentUser?: UserDocument,
+    userAgent?:string
   ): Promise<CategoryDocument> {
     try {
       const category = new this.categoryModel({
         ...createCategoryDto,
       });
+
+      // Log branch creation
+            try {
+              await this.systemActivityLogService.createLog({
+                action: 'CATEGORY_CREATED',
+                details: ` ${category.name} has been created`,
+                performedBy: currentUser?.email || currentUser?.name || 'System',
+                role: currentUser?.role || 'SYSTEM',
+                device: extractDeviceInfo(userAgent) || '',
+              });
+            } catch (logError) {
+              console.error('Failed to log branch creation:', logError);
+            }
+
       return await category.save();
     } catch (error) {
       if (error.code === 11000) {
@@ -96,10 +114,25 @@ export class CategoriesService {
     }
   }
 
-  async remove(id: string, currentUser?: UserDocument): Promise<void> {
+  async remove(id: string, currentUser?: UserDocument, 
+    userAgent?: string,
+  ): Promise<void> {
     const category = await this.findById(id, currentUser);
     category.isActive = false;
-    await category.save();
+    const savedCategory = await category.save();
+
+    // Log branch creation
+      try {
+        await this.systemActivityLogService.createLog({
+          action: 'CATEGORY_DELETED',
+          details: ` ${category.name} has been DELETED.`,
+          performedBy: currentUser?.email || currentUser?.name || 'System',
+          role: currentUser?.role || 'SYSTEM',
+          device: extractDeviceInfo(userAgent) || '',
+        });
+      } catch (logError) {
+        console.error('Failed to log branch creation:', logError);
+      }
   }
 
   async validateCategoryAndUnit(

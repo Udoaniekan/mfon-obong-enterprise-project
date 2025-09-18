@@ -77,9 +77,10 @@ export class TransactionsController {
     @Body() createTransactionDto: CreateTransactionDto,
     @Request() req,
   ): Promise<Transaction> {
+    const currentUser = req.user;
+    const userAgent = req.headers['user-agent'];
     return this.transactionsService.create(
-      createTransactionDto,
-      req.user,
+      createTransactionDto, currentUser, userAgent
     );
   }
 
@@ -162,7 +163,9 @@ export class TransactionsController {
     @Body() updateTransactionDto: UpdateTransactionDto,
     @Request() req,
   ): Promise<Transaction> {
-    return this.transactionsService.update(id, updateTransactionDto, req.user);
+    const currentUser = req.user;
+    const userAgent = req.headers['user-agent'];
+    return this.transactionsService.update(id, updateTransactionDto, currentUser, userAgent);
   }
 
   @Get('reports/sales')

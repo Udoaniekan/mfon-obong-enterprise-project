@@ -24,7 +24,9 @@ export class CategoriesController {
   @Post()
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER)
   create(@Body() createCategoryDto: CreateCategoryDto, @Request() req) {
-    return this.categoriesService.create(createCategoryDto, req.user);
+    const currentUser = req.user;
+    const userAgent = req.headers['user-agent'];
+    return this.categoriesService.create(createCategoryDto, currentUser, userAgent);
   }
 
   @Get()
@@ -62,6 +64,8 @@ export class CategoriesController {
   @Delete(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER, UserRole.ADMIN)
   remove(@Param('id') id: string, @Request() req) {
-    return this.categoriesService.remove(id, req.user);
+    const currentUser = req.user;
+    const userAgent = req.headers['user-agent']; 
+    return this.categoriesService.remove(id, currentUser, userAgent);
   }
 }
