@@ -27,9 +27,9 @@ export class BranchesController {
 @Roles(UserRole.MAINTAINER)
 async create(@Body() createBranchDto: CreateBranchDto, @Req() req): Promise<Branch> {
   const currentUser = req.user; // comes from JwtAuthGuard
-  const device = req.headers['user-agent']; // get device info 
+  const userAgent = req.headers['user-agent']; // get device info 
   
-  return this.branchesService.create(createBranchDto, currentUser, device);
+  return this.branchesService.create(createBranchDto, currentUser, userAgent);
 }
 
   @Get()

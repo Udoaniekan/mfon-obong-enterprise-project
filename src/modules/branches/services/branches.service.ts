@@ -10,6 +10,7 @@ import { CreateBranchDto, UpdateBranchDto } from '../dto/branch.dto';
 import { UserDocument } from '../../users/schemas/user.schema';
 import { UserRole } from '../../../common/enums';
 import { SystemActivityLogService } from '../../system-activity-logs/services/system-activity-log.service';
+import { extractDeviceInfo } from 'src/modules/system-activity-logs/utils/device-extractor.util';
 
 @Injectable()
 export class BranchesService {
@@ -21,7 +22,7 @@ export class BranchesService {
   async create(
     createBranchDto: CreateBranchDto,
     currentUser?: { email: string; role: string; name?: string },
-    device?: string,
+    userAgent?: string,
   ): Promise<BranchDocument> {
     try {
       const branch = new this.branchModel(createBranchDto);
@@ -34,7 +35,7 @@ export class BranchesService {
           details: `New branch created by ${savedBranch.name} at ${savedBranch.address}`,
           performedBy: currentUser?.email || currentUser?.name || 'System',
           role: currentUser?.role || 'SYSTEM',
-          device: device || 'System',
+          device: extractDeviceInfo(userAgent) || '',
         });
       } catch (logError) {
         console.error('Failed to log branch creation:', logError);
