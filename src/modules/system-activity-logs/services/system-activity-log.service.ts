@@ -44,23 +44,22 @@ export class SystemActivityLogService {
     }
   }
 
-  async getLogs(page = 1, limit = 20): Promise<SystemActivityLog[]> {
-    try {
-      this.logger.log(`Fetching system activity logs: page ${page}, limit ${limit}`);
+  async getLogs(): Promise<SystemActivityLog[]> {
+  try {
+    this.logger.log(`Fetching all system activity logs`);
 
-      const logs = await this.systemActivityLogModel
-        .find()
-        .sort({ timestamp: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .exec();
+    const logs = await this.systemActivityLogModel
+      .find()
+      .sort({ timestamp: -1 }) // newest first
+      .exec();
 
-      this.logger.log(`Found ${logs.length} log entries`);
+    this.logger.log(`Found ${logs.length} log entries`);
 
-      return logs;
-    } catch (error) {
-      this.logger.error(`Error fetching logs: ${error.message}`, error.stack);
-      throw error;
-    }
+    return logs;
+  } catch (error) {
+    this.logger.error(`Error fetching logs: ${error.message}`, error.stack);
+    throw error;
   }
+}
+
 }

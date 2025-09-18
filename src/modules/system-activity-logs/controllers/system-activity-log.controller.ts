@@ -22,12 +22,9 @@ export class SystemActivityLogController {
     return this.systemActivityLogService.createLog(createSystemActivityLogDto);
   }
 
-  @Get()
-  @Roles(UserRole.MAINTAINER, UserRole.SUPER_ADMIN, UserRole.ADMIN)
-  async getAllLogs(
-    @Query('page') page = 1,
-    @Query('limit') limit = 20,
-  ): Promise<SystemActivityLog[]> {
-    return this.systemActivityLogService.getLogs(Number(page), Number(limit));
-  }
+ @Get()
+@Roles(UserRole.MAINTAINER, UserRole.SUPER_ADMIN, UserRole.ADMIN)
+async getAllLogs(): Promise<SystemActivityLog[]> {
+  return this.systemActivityLogService.getLogs();
+}
 }

@@ -8,6 +8,7 @@ import {
   Delete,
   UseGuards,
   Request,
+  Req,
 } from '@nestjs/common';
 import { BranchesService } from '../services/branches.service';
 import { CreateBranchDto, UpdateBranchDto } from '../dto/branch.dto';
@@ -22,11 +23,14 @@ import { Roles } from 'src/decorators/roles.decorators';
 export class BranchesController {
   constructor(private readonly branchesService: BranchesService) {}
 
-  @Post()
-  @Roles(UserRole.MAINTAINER)
-  async create(@Body() createBranchDto: CreateBranchDto): Promise<Branch> {
-    return this.branchesService.create(createBranchDto);
-  }
+ @Post()
+@Roles(UserRole.MAINTAINER)
+async create(@Body() createBranchDto: CreateBranchDto, @Req() req): Promise<Branch> {
+  const currentUser = req.user; // comes from JwtAuthGuard
+  const device = req.headers['user-agent']; // get device info 
+  
+  return this.branchesService.create(createBranchDto, currentUser, device);
+}
 
   @Get()
   @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER)

@@ -60,7 +60,7 @@ export class CategoriesController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER, UserRole.ADMIN)
   remove(@Param('id') id: string, @Request() req) {
     return this.categoriesService.remove(id, req.user);
   }
