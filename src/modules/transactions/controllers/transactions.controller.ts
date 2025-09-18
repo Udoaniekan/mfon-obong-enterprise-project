@@ -96,19 +96,37 @@ export class TransactionsController {
   }
 
   @Get('branch/:branchId')
-  @Roles(
-    UserRole.SUPER_ADMIN,
-    UserRole.ADMIN,
-    UserRole.MAINTAINER,
-    UserRole.STAFF,
-  )
-  async findByBranch(@Param('branchId') branchId: string, @Request() req): Promise<Transaction[]> {
-    // Check permissions: ADMIN can only access their own branch
-    if (req.user.role === UserRole.ADMIN && req.user.branchId !== branchId) {
-      throw new BadRequestException('Forbidden: ADMIN can only access transactions from their own branch');
-    }
+@Roles(
+  UserRole.SUPER_ADMIN,
+  UserRole.ADMIN,
+  UserRole.MAINTAINER,
+  UserRole.STAFF,
+)
+async findByBranch(
+  @Param('branchId') branchId: string,
+  @Request() req,
+): Promise<Transaction[]> {
+  const { role, branchId: userBranchId } = req.user;
+
+  // Super Admin and Maintainer can access any branch
+  if (role === UserRole.SUPER_ADMIN || role === UserRole.MAINTAINER) {
     return this.transactionsService.findByBranchId(branchId);
   }
+
+  // Admin and Staff can only access their own branch
+  if (
+    (role === UserRole.ADMIN || role === UserRole.STAFF) &&
+    userBranchId?.toString() === branchId
+  ) {
+    return this.transactionsService.findByBranchId(branchId);
+  }
+
+  // If none of the above matched, deny access
+  throw new BadRequestException(
+    'Forbidden: You can only access transactions from your own branch',
+  );
+}
+
 
   @Get('user/:userId')
   @Roles(
