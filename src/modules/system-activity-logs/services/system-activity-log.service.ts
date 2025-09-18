@@ -16,33 +16,33 @@ export class SystemActivityLogService {
     private readonly systemActivityLogModel: Model<SystemActivityLogDocument>,
   ) {}
 
-  async createLog(
-    createSystemActivityLogDto: CreateSystemActivityLogDto,
-  ): Promise<SystemActivityLog> {
-    try {
-      this.logger.log(
-        `Creating log entry: ${createSystemActivityLogDto.action}`,
-      );
+    async createLog(
+      createSystemActivityLogDto: CreateSystemActivityLogDto,
+    ): Promise<SystemActivityLog> {
+      try {
+        this.logger.log(
+          `Creating log entry: ${createSystemActivityLogDto.action}`,
+        );
 
-      const logEntry = new this.systemActivityLogModel({
-        ...createSystemActivityLogDto,
-        timestamp: createSystemActivityLogDto.timestamp || new Date(),
-      });
+        const logEntry = new this.systemActivityLogModel({
+          ...createSystemActivityLogDto,
+          timestamp: createSystemActivityLogDto.timestamp || new Date(),
+        });
 
-      const savedLog = await logEntry.save();
-      this.logger.log(
-        `Log entry created successfully with ID: ${savedLog._id}`,
-      );
+        const savedLog = await logEntry.save();
+        this.logger.log(
+          `Log entry created successfully with ID: ${savedLog._id}`,
+        );
 
-      return savedLog;
-    } catch (error) {
-      this.logger.error(
-        `Error creating log entry: ${error.message}`,
-        error.stack,
-      );
-      throw error;
+        return savedLog;
+      } catch (error) {
+        this.logger.error(
+          `Error creating log entry: ${error.message}`,
+          error.stack,
+        );
+        throw error;
+      }
     }
-  }
 
   async getLogs(): Promise<SystemActivityLog[]> {
   try {

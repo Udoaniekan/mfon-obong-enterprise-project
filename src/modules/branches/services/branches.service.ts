@@ -31,7 +31,7 @@ export class BranchesService {
       try {
         await this.systemActivityLogService.createLog({
           action: 'BRANCH_CREATED',
-          details: `New branch created: ${savedBranch.name} at ${savedBranch.address}`,
+          details: `New branch created by ${savedBranch.name} at ${savedBranch.address}`,
           performedBy: currentUser?.email || currentUser?.name || 'System',
           role: currentUser?.role || 'SYSTEM',
           device: device || 'System',
