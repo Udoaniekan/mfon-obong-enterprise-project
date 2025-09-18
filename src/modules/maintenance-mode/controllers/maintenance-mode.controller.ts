@@ -16,6 +16,7 @@ import { extractDeviceInfo } from '../../system-activity-logs/utils/device-extra
 import { BypassMaintenance } from '../../../decorators/bypass-maintenance.decorator';
 import { UsersService } from '../../users/services/users.service';
 import { JwtAuthGuard } from 'src/modules/auth/guards/jwt-auth.guard';
+import { Public } from 'src/decorators/public.decorator';
 
 @Controller('maintenance-mode')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -59,6 +60,7 @@ export class MaintenanceModeController {
   }
 
   @Post('/contact-support')
+  @Public()
   async contactSupport(
     @Body() body: { email: string; message: string },
   ) {
