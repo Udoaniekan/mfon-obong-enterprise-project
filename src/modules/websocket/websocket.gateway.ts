@@ -26,6 +26,8 @@ interface AuthenticatedSocket extends Socket {
       'http://localhost:3000',
       'http://localhost:3001',
       'https://your-frontend-domain.com',
+      'https://mfon-obong-enterprises.pipeops.net',
+      'https://frontend-six-liard-24.vercel.app'
     ],
     credentials: true,
   },
