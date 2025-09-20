@@ -39,7 +39,7 @@ export class TransactionsService {
 
   async create(
     createTransactionDto: CreateTransactionDto,
-    user: { userId: string; role: string; email?: string; name?: string },
+    user: { userId: string; role: string; email?: string; name?: string; branch?:string },
     userAgent: string
   ): Promise<Transaction & { clientBalance?: number }> {
     let clientId: Types.ObjectId | undefined = undefined;
@@ -145,9 +145,14 @@ export class TransactionsService {
       }
     } else {
       // Walk-in client - STRICT payment validation
-      if (amountPaid < total) {
+      if (amountPaid < total ) {
         throw new BadRequestException(
           `Insufficient payment for walk-in client. Required: ${total}, Provided: ${amountPaid}. Walk-in clients must pay the full amount upfront.`
+        );
+      }
+      if (amountPaid > total ) {
+        throw new BadRequestException(
+          `Amount provided is more than the required payment for this transaction. Required: ${total}, Provided: ${amountPaid}. Walk-in clients must pay exactly ${total}.`
         );
       }
       status = 'COMPLETED';
@@ -227,7 +232,7 @@ export class TransactionsService {
           email: user.email || 'unknown@system.com',
           role: user.role as UserRole,
           branchId: createTransactionDto.branchId,
-          branch: 'System Branch', // Could be improved by getting actual branch name
+          branch: user.branch || 'System Branch', 
         }
       );
       this.realtimeEventService.emitTransactionCreated(eventData);
