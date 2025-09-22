@@ -3,28 +3,35 @@ import {
   UnauthorizedException,
   BadRequestException,
   ForbiddenException,
+  Logger,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { JwtService } from '@nestjs/jwt';
+import { Request } from 'express';
 import { UsersService } from '../../users/services/users.service';
 import { Otp } from '../schemas/otp.schema';
 import { generateOTP, getOTPExpiry } from '../utils/otp.util';
 import { sendOTPEmail } from '../utils/mailer.util';
 import { SystemActivityLogService } from '../../system-activity-logs/services/system-activity-log.service';
 import { extractDeviceInfo } from '../../system-activity-logs/utils/device-extractor.util';
+import { EnhancedJwtService, TokenPair } from '../../../common/services/enhanced-jwt.service';
+import { DeviceFingerprintService, DeviceFingerprint } from '../../../common/services/device-fingerprint.service';
+import { RedisService } from '../../../common/services/redis.service';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class AuthService {
-  private blacklistedTokens = new Set<string>(); // In-memory token blacklist
-  private refreshTokens = new Map<string, { userId: string; email: string; expiresAt: number }>(); // In-memory refresh token storage
+  private readonly logger = new Logger(AuthService.name);
 
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     @InjectModel(Otp.name) private readonly otpModel: Model<Otp>,
     private readonly systemActivityLogService: SystemActivityLogService,
+    private readonly enhancedJwtService: EnhancedJwtService,
+    private readonly deviceFingerprintService: DeviceFingerprintService,
+    private readonly redisService: RedisService,
   ) {}
   // MAINTAINER requests OTP to their email for password reset
   async requestOtp(
@@ -153,40 +160,41 @@ export class AuthService {
       throw new UnauthorizedException('Invalid user');
     }
   }
-  async login(user: any, userAgent?: string) {
+  async login(user: any, userAgent?: string, req?: any) {
     try {
-      const payload = {
-        email: user.email,
-        sub: user._id ? user._id.toString() : user.id,
-        role: user.role,
-        name: user.name,
-        branch: user.branch,
-        branchId: user.branchId,
-      };
+      // Generate device fingerprint
+      const deviceFingerprint = this.deviceFingerprintService.generateFingerprint(req);
+      
+      // Check for suspicious patterns
+      const suspiciousPatterns = this.deviceFingerprintService.detectSuspiciousPatterns(deviceFingerprint);
 
-      const access_token = this.jwtService.sign(payload, { expiresIn: '1h' });
-      
-      // Generate refresh token
-      const refreshPayload = {
-        email: user.email,
-        sub: user._id ? user._id.toString() : user.id,
-        type: 'refresh'
-      };
-      const refresh_token = this.jwtService.sign(refreshPayload, { expiresIn: '7d' });
-      
-      // Store refresh token in memory
-      const expiresAt = Date.now() + (7 * 24 * 60 * 60 * 1000); // 7 days from now
-      this.refreshTokens.set(refresh_token, {
-        userId: refreshPayload.sub,
-        email: refreshPayload.email,
-        expiresAt
-      });
+      // Log suspicious activity if detected
+      if (suspiciousPatterns.length > 0) {
+        await this.systemActivityLogService.createLog({
+          action: 'SUSPICIOUS_LOGIN',
+          details: `Suspicious login attempt detected: ${suspiciousPatterns.join(', ')}`,
+          performedBy: user.email || user.name,
+          role: user.role,
+          device: extractDeviceInfo(userAgent || ''),
+        });
+      }
+
+      const userId = user._id ? user._id.toString() : user.id;
+
+      // Generate token pair using enhanced JWT service
+      const tokenPair = await this.enhancedJwtService.generateTokenPair(
+        userId,
+        user.email,
+        user.role,
+        deviceFingerprint,
+        user.branch
+      );
 
       // Log successful login activity
       try {
         await this.systemActivityLogService.createLog({
           action: 'LOGIN',
-          details: `User logged in successfully`,
+          details: `User logged in successfully${suspiciousPatterns.length > 0 ? ' (suspicious patterns detected)' : ''}`,
           performedBy: user.email || user.name,
           role: user.role,
           device: extractDeviceInfo(userAgent || ''),
@@ -195,17 +203,17 @@ export class AuthService {
         // Don't fail login if logging fails
       }
 
-      // Direct format, not nested inside data property
+      // Return token pair and user info
       return {
-        access_token,
-        refresh_token,
+        access_token: tokenPair.accessToken,
+        refresh_token: tokenPair.refreshToken,
         user: {
-          id: payload.sub,
-          email: payload.email,
-          role: payload.role,
-          name: payload.name,
-          branch: payload.branch,
-          branchId: payload.branchId,
+          id: userId,
+          email: user.email,
+          role: user.role,
+          name: user.name,
+          branch: user.branch,
+          branchId: user.branchId,
         },
       };
     } catch (error) {
@@ -221,9 +229,9 @@ export class AuthService {
     userAgent?: string,
   ): Promise<{ message: string }> {
     try {
-      // Add token to blacklist
+      // Blacklist token using enhanced JWT service
       if (token) {
-        this.blacklistedTokens.add(token);
+        await this.enhancedJwtService.blacklistToken(token);
       }
 
       // Log logout activity
@@ -245,84 +253,93 @@ export class AuthService {
     }
   }
 
-  isTokenBlacklisted(token: string): boolean {
-    return this.blacklistedTokens.has(token);
+  async isTokenBlacklisted(token: string): Promise<boolean> {
+    try {
+      return await this.redisService.isTokenBlacklisted(token);
+    } catch (error) {
+      // Fallback - since blacklistedTokens is removed, return false for development
+      return false;
+    }
   }
 
-  getRefreshTokenData(refreshToken: string) {
-    return this.refreshTokens.get(refreshToken);
+  /**
+   * Logout from all devices
+   */
+  async logoutFromAllDevices(
+    user: any,
+    userAgent?: string,
+  ): Promise<{ message: string }> {
+    try {
+      const userId = user._id ? user._id.toString() : user.id;
+      
+      // Logout from all devices using enhanced JWT service
+      await this.enhancedJwtService.logoutAllDevices(userId);
+
+      // Log logout from all devices activity
+      try {
+        await this.systemActivityLogService.createLog({
+          action: 'LOGOUT_ALL_DEVICES',
+          details: `User logged out from all devices`,
+          performedBy: user.email || user.name,
+          role: user.role,
+          device: extractDeviceInfo(userAgent || ''),
+        });
+      } catch (logError) {
+        // Don't fail logout if logging fails
+      }
+
+      return { message: 'Logged out from all devices successfully' };
+    } catch (error) {
+      throw new Error('Logout from all devices failed: ' + error.message);
+    }
   }
 
-  invalidateRefreshToken(refreshToken: string) {
-    this.refreshTokens.delete(refreshToken);
+  /**
+   * Get refresh token data (now handled by Redis)
+   */
+  async getRefreshTokenData(refreshToken: string) {
+    try {
+      const validation = await this.enhancedJwtService.validateToken(refreshToken, undefined, 'refresh');
+      return validation.isValid ? validation.payload : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  /**
+   * Invalidate refresh token (now handled by Redis)
+   */
+  async invalidateRefreshToken(refreshToken: string) {
+    try {
+      await this.enhancedJwtService.blacklistToken(refreshToken);
+    } catch (error) {
+      this.logger.error('Failed to invalidate refresh token:', error);
+    }
   }
 
   // Refresh Token Methods
-  async refreshToken(refreshToken: string, userAgent?: string) {
+  async refreshToken(refreshToken: string, userAgent?: string, req?: any) {
     try {
-      // Clean up expired refresh tokens first
-      this.cleanupExpiredRefreshTokens();
+      // First validate the refresh token to get the user data
+      const deviceFingerprint = req ? this.deviceFingerprintService.generateFingerprint(req) : undefined;
+      const validation = await this.enhancedJwtService.validateToken(
+        refreshToken, 
+        deviceFingerprint, 
+        'refresh'
+      );
 
-      // Check if refresh token exists in memory
-      const tokenData = this.refreshTokens.get(refreshToken);
-      if (!tokenData) {
+      if (!validation.isValid || !validation.payload) {
         throw new UnauthorizedException('Invalid refresh token');
       }
 
-      // Check if token is expired
-      if (Date.now() > tokenData.expiresAt) {
-        this.refreshTokens.delete(refreshToken);
-        throw new UnauthorizedException('Refresh token expired');
-      }
+      // Use enhanced JWT service to refresh token
+      const result = await this.enhancedJwtService.refreshToken(refreshToken, deviceFingerprint);
 
-      // Verify JWT signature
-      let decodedToken;
-      try {
-        decodedToken = this.jwtService.verify(refreshToken);
-      } catch (error) {
-        this.refreshTokens.delete(refreshToken);
-        throw new UnauthorizedException('Invalid refresh token signature');
-      }
-
-      // Validate token type
-      if (decodedToken.type !== 'refresh') {
-        throw new UnauthorizedException('Invalid token type');
-      }
-
-      // Get fresh user data
-      const user = await this.usersService.findByEmail(tokenData.email);
+      // Get user details for response
+      const user = await this.usersService.findByEmail(validation.payload.email);
       if (!user || !user.isActive) {
-        this.refreshTokens.delete(refreshToken);
         throw new UnauthorizedException('User not found or inactive');
       }
-
-      // Generate new access token
-      const payload = {
-        email: user.email,
-        sub: user._id.toString(),
-        role: user.role,
-        name: user.name,
-        branch: user.branch,
-        branchId: user.branchId ? user.branchId.toString() : null,
-      };
-      const access_token = this.jwtService.sign(payload, { expiresIn: '1h' });
-
-      // Generate new refresh token (token rotation for security)
-      const newRefreshPayload = {
-        email: user.email,
-        sub: user._id.toString(),
-        type: 'refresh'
-      };
-      const new_refresh_token = this.jwtService.sign(newRefreshPayload, { expiresIn: '7d' });
-
-      // Remove old refresh token and store new one
-      this.refreshTokens.delete(refreshToken);
-      const newExpiresAt = Date.now() + (7 * 24 * 60 * 60 * 1000);
-      this.refreshTokens.set(new_refresh_token, {
-        userId: newRefreshPayload.sub,
-        email: newRefreshPayload.email,
-        expiresAt: newExpiresAt
-      });
 
       // Log token refresh activity
       try {
@@ -338,15 +355,15 @@ export class AuthService {
       }
 
       return {
-        access_token,
-        refresh_token: new_refresh_token,
+        access_token: result.accessToken,
+        refresh_token: result.refreshToken,
         user: {
-          id: payload.sub,
-          email: payload.email,
-          role: payload.role,
-          name: payload.name,
-          branch: payload.branch,
-          branchId: payload.branchId,
+          id: user._id.toString(),
+          email: user.email,
+          role: user.role,
+          name: user.name,
+          branch: user.branch,
+          branchId: user.branchId ? user.branchId.toString() : null,
         },
       };
     } catch (error) {
@@ -357,33 +374,23 @@ export class AuthService {
     }
   }
 
-  // Clean up expired refresh tokens from memory
-  private cleanupExpiredRefreshTokens(): void {
-    const now = Date.now();
-    for (const [token, data] of this.refreshTokens.entries()) {
-      if (now > data.expiresAt) {
-        this.refreshTokens.delete(token);
-      }
+  /**
+   * Get token stats from Redis
+   */
+  async getRefreshTokenStats() {
+    try {
+      // This could be implemented to get stats from Redis
+      // For now, return placeholder
+      return { message: 'Token stats now managed by Redis' };
+    } catch (error) {
+      return { error: 'Failed to get token stats' };
     }
   }
 
-  // Get refresh token stats (for monitoring/debugging)
-  getRefreshTokenStats(): { total: number; expired: number } {
-    const now = Date.now();
-    let expired = 0;
-    const total = this.refreshTokens.size;
-
-    for (const [token, data] of this.refreshTokens.entries()) {
-      if (now > data.expiresAt) {
-        expired++;
-      }
-    }
-
-    return { total, expired };
-  }
-
-  // Revoke refresh token (for logout)
-  revokeRefreshToken(refreshToken: string): void {
-    this.refreshTokens.delete(refreshToken);
+  /**
+   * Revoke refresh token (now handled by Redis blacklisting)
+   */
+  async revokeRefreshToken(refreshToken: string): Promise<void> {
+    await this.invalidateRefreshToken(refreshToken);
   }
 }

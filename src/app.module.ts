@@ -22,6 +22,8 @@ import { HealthModule } from './modules/health/health.module';
 import { WebSocketModule } from './modules/websocket/websocket.module';
 import { databaseConfig, jwtConfig } from './config/configuration';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { SimpleSanitizationMiddleware } from './common/middleware/simple-sanitization.middleware';
+import { SimpleRateLimitMiddleware } from './common/middleware/simple-rate-limit.middleware';
 // ... your other imports
 
 @Module({
@@ -59,4 +61,20 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule {
+  configure(consumer: MiddlewareConsumer) {
+    // Apply rate limiting to all routes
+    consumer
+      .apply(SimpleRateLimitMiddleware)
+      .forRoutes('*');
+    
+    // Apply input sanitization to all routes except file uploads
+    consumer
+      .apply(SimpleSanitizationMiddleware)
+      .exclude(
+        { path: '/api/upload', method: RequestMethod.POST },
+        { path: '/api/files', method: RequestMethod.POST }
+      )
+      .forRoutes('*');
+  }
+}

@@ -21,14 +21,14 @@ export class CookieRefreshMiddleware implements NestMiddleware {
         const refreshPayload = this.jwtService.verify(refreshToken);
         
         if (refreshPayload.type === 'refresh') {
-          // Check if refresh token is still valid in memory
-          const tokenData = this.authService.getRefreshTokenData(refreshToken);
+          // Check if refresh token is still valid
+          const tokenData = await this.authService.getRefreshTokenData(refreshToken);
           
-          if (tokenData && tokenData.expiresAt > Date.now()) {
+          if (tokenData) {
             // Generate new access token
             const newAccessPayload = {
               email: tokenData.email,
-              sub: tokenData.userId,
+              sub: tokenData.sub,
               role: refreshPayload.role || 'STAFF', // Default role if not in refresh token
               name: refreshPayload.name,
               branch: refreshPayload.branch,
@@ -69,13 +69,13 @@ export class CookieRefreshMiddleware implements NestMiddleware {
             const refreshPayload = this.jwtService.verify(refreshToken);
             
             if (refreshPayload.type === 'refresh') {
-              const tokenData = this.authService.getRefreshTokenData(refreshToken);
+              const tokenData = await this.authService.getRefreshTokenData(refreshToken);
               
-              if (tokenData && tokenData.expiresAt > Date.now()) {
+              if (tokenData) {
                 // Generate new access token
                 const newAccessPayload = {
                   email: tokenData.email,
-                  sub: tokenData.userId,
+                  sub: tokenData.sub,
                   role: refreshPayload.role || 'STAFF',
                   name: refreshPayload.name,
                   branch: refreshPayload.branch,

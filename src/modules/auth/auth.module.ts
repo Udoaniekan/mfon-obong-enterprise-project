@@ -15,6 +15,8 @@ import { SessionManagementService } from '../session-management/services/session
 import { MongooseModule as SessionMongooseModule } from '@nestjs/mongoose';
 import { SessionManagement, SessionManagementSchema } from '../session-management/schemas/session-management.schema';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { EnhancedJwtAuthGuard } from './guards/enhanced-jwt-auth.guard';
+import { CommonModule } from '../../common/common.module';
 
 @Module({
   imports: [
@@ -22,6 +24,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
     PassportModule,
     SystemActivityLogModule,
     MaintenanceModeModule,
+    CommonModule, // Import CommonModule for enhanced security services
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
@@ -39,7 +42,14 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
     ]),
   ],
   controllers: [AuthController],
-  providers: [AuthService, LocalStrategy, JwtStrategy, JwtAuthGuard, SessionManagementService],
-  exports: [AuthService, JwtAuthGuard],
+  providers: [
+    AuthService, 
+    LocalStrategy, 
+    JwtStrategy, 
+    JwtAuthGuard, 
+    EnhancedJwtAuthGuard,
+    SessionManagementService
+  ],
+  exports: [AuthService, JwtAuthGuard, EnhancedJwtAuthGuard],
 })
 export class AuthModule {}
