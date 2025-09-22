@@ -219,6 +219,7 @@ export class ClientsService {
   async addTransaction(
     id: string,
     transactionDto: AddTransactionDto,
+    session?: any, // MongoDB session for transactions
     currentUser?: UserDocument,
     device?: string,
   ): Promise<ClientDocument> {
@@ -228,6 +229,7 @@ export class ClientsService {
       date: transactionDto.date || new Date(),
       reference: transactionDto.reference || `TXN${Date.now()}`,
     };
+
     switch (transaction.type) {
       case 'DEPOSIT':
         client.balance += transaction.amount;
@@ -245,21 +247,27 @@ export class ClientsService {
         client.balance -= transaction.amount;
         break;
     }
+
     client.transactions.push(transaction);
     client.lastTransactionDate = transaction.date;
-    const savedClient = await client.save();
+    
+    // Save with session support
+    const saveOptions = session ? { session } : {};
+    const savedClient = await client.save(saveOptions);
 
-    // Log client transaction activity
+    // Log client transaction activity (with session if provided)
     try {
+      const logOptions = session ? { session } : {};
       await this.systemActivityLogService.createLog({
         action: 'CLIENT_TRANSACTION_ADDED',
         details: `${transaction.type} transaction added for ${client.name}: ${transaction.amount} - Balance: ${client.balance}`,
         performedBy: currentUser?.email || currentUser?.name || 'System',
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
-      });
+      }, logOptions);
     } catch (logError) {
       console.error('Failed to log client transaction:', logError);
+      // Don't throw error - logging failure shouldn't fail the transaction
     }
 
     return savedClient;

@@ -23,6 +23,8 @@ import {
   CalculateTransactionDto,
 } from '../dto/transaction.dto';
 import { extractDeviceInfo } from 'src/modules/system-activity-logs/utils/device-extractor.util';
+import { DatabaseTransactionService } from '../../../common/services/database-transaction.service';
+import { DecimalService } from '../../../common/services/decimal.service';
 
 @Injectable()
 export class TransactionsService {
@@ -35,50 +37,52 @@ export class TransactionsService {
     private readonly productsService: ProductsService,
     private readonly systemActivityLogService: SystemActivityLogService,
     private readonly realtimeEventService: RealtimeEventService,
+    private readonly dbTransactionService: DatabaseTransactionService,
+    private readonly decimalService: DecimalService,
   ) {}
 
   async create(
     createTransactionDto: CreateTransactionDto,
-    user: { userId: string; role: string; email?: string; name?: string; branch?:string },
+    user: { userId: string; role: string; email?: string; name?: string; branch?: string },
     userAgent: string
   ): Promise<Transaction & { clientBalance?: number }> {
-    let clientId: Types.ObjectId | undefined = undefined;
-    let walkInClient: any = undefined;
+    return this.dbTransactionService.executeInTransaction(async (session) => {
+      let clientId: any = undefined;
+      let walkInClient: any = undefined;
 
-    if (createTransactionDto.clientId) {
-      // Registered client
-      const client = await this.clientsService.findById(
-        createTransactionDto.clientId,
-      );
-      
-      // Check if client is blocked/suspended
-      if (!client.isActive) {
+      // Step 1: Validate and prepare client information
+      if (createTransactionDto.clientId) {
+        const client = await this.clientsService.findById(
+          createTransactionDto.clientId,
+        );
+        
+        if (!client.isActive) {
+          throw new BadRequestException(
+            `Transaction blocked: Client "${client.name}" is currently suspended. Please contact admin to reactivate this client.`
+          );
+        }
+        
+        clientId = client._id;
+      } else if (
+        createTransactionDto.walkInClient &&
+        createTransactionDto.walkInClient.name
+      ) {
+        walkInClient = {
+          name: createTransactionDto.walkInClient.name,
+          phone: createTransactionDto.walkInClient.phone,
+          address: createTransactionDto.walkInClient.address,
+        };
+      } else {
         throw new BadRequestException(
-          `Transaction blocked: Client "${client.name}" is currently suspended. Please contact admin to reactivate this client.`
+          'Either clientId or walkInClient details (name) must be provided',
         );
       }
-      
-      clientId = (client as any)._id;
-    } else if (
-      createTransactionDto.walkInClient &&
-      createTransactionDto.walkInClient.name
-    ) {
-      // Walk-in client
-      walkInClient = {
-        name: createTransactionDto.walkInClient.name,
-        phone: createTransactionDto.walkInClient.phone,
-        address: createTransactionDto.walkInClient.address,
-      };
-    } else {
-      throw new BadRequestException(
-        'Either clientId or walkInClient details (name) must be provided',
-      );
-    }
 
-    // Process items and calculate totals
-    let subtotal = 0;
-    const processedItems = await Promise.all(
-      createTransactionDto.items.map(async (item) => {
+      // Step 2: Process items and calculate totals using decimal arithmetic
+      const processedItems = [];
+      let subtotalDecimal = this.decimalService.new(0);
+
+      for (const item of createTransactionDto.items) {
         const product = await this.productsService.findById(item.productId);
 
         // Validate unit matches product category
@@ -93,172 +97,201 @@ export class TransactionsService {
           throw new BadRequestException(
             `Insufficient stock for ${product.name}. Available: ${product.stock} ${product.unit}`,
           );
-        } // Calculate price
-        const price = product.unitPrice * item.quantity;
-        const itemSubtotal = price - (item.discount || 0);
-        subtotal += itemSubtotal;
+        }
 
-        return {
+        // Calculate price using decimal arithmetic
+        const unitPriceDecimal = this.decimalService.new(product.unitPrice);
+        const quantityDecimal = this.decimalService.new(item.quantity);
+        const discountDecimal = this.decimalService.new(item.discount || 0);
+        
+        const itemPriceDecimal = this.decimalService.multiply(unitPriceDecimal, quantityDecimal);
+        const itemSubtotalDecimal = this.decimalService.subtract(itemPriceDecimal, discountDecimal);
+        
+        // Ensure subtotal is not negative
+        if (this.decimalService.isLessThan(itemSubtotalDecimal, 0)) {
+          throw new BadRequestException(
+            `Discount for ${product.name} cannot exceed item price. Item price: ${this.decimalService.toFixed(itemPriceDecimal, 2)}, Discount: ${this.decimalService.toFixed(discountDecimal, 2)}`
+          );
+        }
+
+        subtotalDecimal = this.decimalService.add(subtotalDecimal, itemSubtotalDecimal);
+
+        processedItems.push({
           productId: product._id,
           productName: product.name,
           quantity: item.quantity,
           unit: item.unit,
-          unitPrice: price / item.quantity,
-          discount: item.discount || 0,
-          subtotal: itemSubtotal,
-        };
-      }),
-    );
-
-    const total = subtotal - (createTransactionDto.discount || 0);
-    const amountPaid = createTransactionDto.amountPaid || 0;
-
-    // Create transaction
-    let status = 'PENDING';
-    if (clientId) {
-      // Registered client
-      const type = createTransactionDto.type || 'PURCHASE';
-      if (type === 'PICKUP') {
-        status = 'COMPLETED';
-      } else if (type === 'PURCHASE') {
-        // Fetch client balance
-        const client = await this.clientsService.findById(
-          createTransactionDto.clientId,
-        );
-        const clientBalance = client.balance || 0;
-        const requiredPayment = total - (clientBalance > 0 ? clientBalance : 0);
-        if (requiredPayment < 0) {
-          // Client has more than enough balance, no payment needed
-          if (amountPaid !== 0) {
-            throw new BadRequestException(
-              `No payment required. Client already has enough balance.`,
-            );
-          }
-        } else {
-          if (amountPaid !== requiredPayment) {
-            throw new BadRequestException(
-              `Insufficient payment. Client must pay exactly ${requiredPayment} to complete this purchase. Current balance: ${clientBalance}`,
-            );
-          }
-        }
-        status = 'COMPLETED';
-      }
-    } else {
-      // Walk-in client - STRICT payment validation
-      if (amountPaid < total ) {
-        throw new BadRequestException(
-          `Insufficient payment for walk-in client. Required: ${total}, Provided: ${amountPaid}. Walk-in clients must pay the full amount upfront.`
-        );
-      }
-      if (amountPaid > total ) {
-        throw new BadRequestException(
-          `Amount provided is more than the required payment for this transaction. Required: ${total}, Provided: ${amountPaid}. Walk-in clients must pay exactly ${total}.`
-        );
-      }
-      status = 'COMPLETED';
-    }
-
-    const transaction = new this.transactionModel({
-      invoiceNumber: await this.generateInvoiceNumber(),
-      clientId,
-      walkInClient,
-      userId: new Types.ObjectId(user.userId),
-      items: processedItems,
-      subtotal,
-      discount: createTransactionDto.discount || 0,
-      total,
-      amountPaid,
-      paymentMethod: createTransactionDto.paymentMethod,
-      notes: createTransactionDto.notes,
-      status,
-      branchId: createTransactionDto.branchId,
-      type: createTransactionDto.type,
-      isPickedUp: createTransactionDto.type === 'PICKUP',
-    });
-
-    // Update client balance only for registered clients
-    if (clientId) {
-      const ledgerType =
-        createTransactionDto.type === 'PICKUP' ? 'PICKUP' : 'PURCHASE';
-      await this.clientsService.addTransaction(clientId.toString(), {
-        type: ledgerType,
-        amount: total,
-        description: `Invoice #${transaction.invoiceNumber}`,
-        reference: transaction._id.toString(),
-      });
-    }
-
-    // Update stock levels
-    await Promise.all(
-      transaction.items.map(async (item) => {
-        await this.productsService.updateStock(item.productId.toString(), {
-          quantity: item.quantity,
-          unit: item.unit,
-          operation: StockOperation.SUBTRACT,
+          unitPrice: this.decimalService.toNumber(unitPriceDecimal),
+          discount: this.decimalService.toNumber(discountDecimal),
+          subtotal: this.decimalService.toNumber(itemSubtotalDecimal),
         });
-      }),
-    );
-
-    const savedTransaction = await transaction.save();
-
-    // Log transaction creation activity
-    try {
-      const clientName = clientId
-        ? (await this.clientsService.findById(createTransactionDto.clientId))
-            .name
-        : createTransactionDto.walkInClient.name;
-
-      await this.systemActivityLogService.createLog({
-        action: 'TRANSACTION_CREATED',
-        details: `Transaction ${savedTransaction.invoiceNumber} created for ${clientName} (${createTransactionDto.type}) - Total: ${total}`,
-        performedBy: user.email || user.name || user.userId,
-        role: user.role,
-        device: extractDeviceInfo(userAgent) || "",
-      });
-    } catch (logError) {
-      console.error('Failed to log transaction creation:', logError);
-      // Don't fail transaction creation if logging fails
-    }
-
-    // Emit real-time event for transaction creation
-    try {
-      const eventData = this.realtimeEventService.createEventData(
-        'created',
-        'transaction',
-        savedTransaction._id.toString(),
-        savedTransaction,
-        {
-          id: user.userId,
-          email: user.email || 'unknown@system.com',
-          role: user.role as UserRole,
-          branchId: createTransactionDto.branchId,
-          branch: user.branch || 'System Branch', 
-        }
-      );
-      this.realtimeEventService.emitTransactionCreated(eventData);
-      console.log('✅ Real-time transaction event emitted');
-    } catch (realtimeError) {
-      console.error('Failed to emit real-time transaction event:', realtimeError);
-      // Don't fail transaction creation if real-time event fails
-    }
-
-    // Get updated client balance for registered clients
-    let clientBalance = null;
-    if (clientId) {
-      try {
-        const updatedClient = await this.clientsService.findById(
-          createTransactionDto.clientId,
-        );
-        clientBalance = updatedClient.balance || 0;
-      } catch (error) {
-        console.error('Failed to fetch updated client balance:', error);
       }
-    }
 
-    return {
-      ...savedTransaction.toJSON(),
-      clientBalance,
-    };
+      // Step 3: Calculate transaction totals
+      const globalDiscountDecimal = this.decimalService.new(createTransactionDto.discount || 0);
+      const totalDecimal = this.decimalService.subtract(subtotalDecimal, globalDiscountDecimal);
+      const amountPaidDecimal = this.decimalService.new(createTransactionDto.amountPaid || 0);
+
+      // Ensure total is not negative
+      if (this.decimalService.isLessThan(totalDecimal, 0)) {
+        throw new BadRequestException(
+          `Global discount cannot exceed subtotal. Subtotal: ${this.decimalService.toFixed(subtotalDecimal, 2)}, Discount: ${this.decimalService.toFixed(globalDiscountDecimal, 2)}`
+        );
+      }
+
+      // Step 4: Validate payment based on client type
+      let status = 'PENDING';
+      
+      if (clientId) {
+        // Registered client
+        const type = createTransactionDto.type || 'PURCHASE';
+        
+        if (type === 'PICKUP') {
+          status = 'COMPLETED';
+        } else if (type === 'PURCHASE') {
+          const client = await this.clientsService.findById(
+            createTransactionDto.clientId,
+          );
+          
+          const clientBalanceDecimal = this.decimalService.new(client.balance || 0);
+          const requiredPaymentDecimal = this.decimalService.subtract(
+            totalDecimal, 
+            this.decimalService.isGreaterThan(clientBalanceDecimal, 0) ? clientBalanceDecimal : this.decimalService.new(0)
+          );
+
+          if (this.decimalService.isLessThanOrEqual(requiredPaymentDecimal, 0)) {
+            // Client has sufficient balance
+            if (!this.decimalService.isZero(amountPaidDecimal)) {
+              throw new BadRequestException(
+                `No payment required. Client has sufficient balance (${this.decimalService.toFixed(clientBalanceDecimal, 2)}) to cover transaction total (${this.decimalService.toFixed(totalDecimal, 2)}).`
+              );
+            }
+          } else {
+            // Client needs to pay additional amount
+            if (!this.decimalService.isEqual(amountPaidDecimal, requiredPaymentDecimal)) {
+              throw new BadRequestException(
+                `Insufficient payment. Client must pay exactly ${this.decimalService.toFixed(requiredPaymentDecimal, 2)} to complete this purchase. Current balance: ${this.decimalService.toFixed(clientBalanceDecimal, 2)}, Transaction total: ${this.decimalService.toFixed(totalDecimal, 2)}`
+              );
+            }
+          }
+          status = 'COMPLETED';
+        }
+      } else {
+        // Walk-in client - STRICT payment validation
+        if (this.decimalService.isLessThan(amountPaidDecimal, totalDecimal)) {
+          throw new BadRequestException(
+            `Insufficient payment for walk-in client. Required: ${this.decimalService.toFixed(totalDecimal, 2)}, Provided: ${this.decimalService.toFixed(amountPaidDecimal, 2)}. Walk-in clients must pay the full amount upfront.`
+          );
+        }
+        if (this.decimalService.isGreaterThan(amountPaidDecimal, totalDecimal)) {
+          throw new BadRequestException(
+            `Amount provided exceeds transaction total. Required: ${this.decimalService.toFixed(totalDecimal, 2)}, Provided: ${this.decimalService.toFixed(amountPaidDecimal, 2)}. Walk-in clients must pay exactly the transaction amount.`
+          );
+        }
+        status = 'COMPLETED';
+      }
+
+      // Step 5: Create transaction with session
+      const transaction = new this.transactionModel({
+        invoiceNumber: await this.generateInvoiceNumber(),
+        clientId,
+        walkInClient,
+        userId: new Types.ObjectId(user.userId),
+        items: processedItems,
+        subtotal: this.decimalService.toNumber(subtotalDecimal),
+        discount: this.decimalService.toNumber(globalDiscountDecimal),
+        total: this.decimalService.toNumber(totalDecimal),
+        amountPaid: this.decimalService.toNumber(amountPaidDecimal),
+        paymentMethod: createTransactionDto.paymentMethod,
+        notes: createTransactionDto.notes,
+        status,
+        branchId: createTransactionDto.branchId,
+        type: createTransactionDto.type,
+        isPickedUp: createTransactionDto.type === 'PICKUP',
+      });
+
+      const savedTransaction = await transaction.save({ session });
+
+      // Step 6: Update client balance (for registered clients only)
+      if (clientId) {
+        const ledgerType =
+          createTransactionDto.type === 'PICKUP' ? 'PICKUP' : 'PURCHASE';
+        
+        await this.clientsService.addTransaction(
+          clientId.toString(), 
+          {
+            type: ledgerType,
+            amount: this.decimalService.toNumber(totalDecimal),
+            description: `Invoice #${savedTransaction.invoiceNumber}`,
+            reference: savedTransaction._id.toString(),
+          }, 
+          session, // Pass session for transaction
+          undefined, // currentUser - we're in a system context
+          extractDeviceInfo(userAgent)
+        );
+      }
+
+      // Step 7: Update stock levels atomically
+      for (const item of savedTransaction.items) {
+        await this.productsService.updateStock(
+          item.productId.toString(),
+          {
+            quantity: item.quantity,
+            unit: item.unit,
+            operation: StockOperation.SUBTRACT,
+          },
+          undefined, // currentUser - we're in a system context
+          extractDeviceInfo(userAgent),
+          session, // Pass session for transaction
+        );
+      }
+
+      // Step 8: Log transaction creation (within transaction)
+      try {
+        await this.systemActivityLogService.createLog({
+          action: 'TRANSACTION_CREATED',
+          details: `Transaction created: Invoice #${savedTransaction.invoiceNumber}, Total: ${this.decimalService.toFixed(totalDecimal, 2)}, Items: ${savedTransaction.items.length}`,
+          performedBy: user.email || user.name || 'System',
+          role: user.role || 'SYSTEM',
+          device: extractDeviceInfo(userAgent) || '',
+        }, { session });
+      } catch (logError) {
+        console.error('Failed to log transaction creation:', logError);
+        // Don't throw error - logging failure shouldn't fail the transaction
+      }
+
+      // Step 9: Emit real-time events (after successful transaction)
+      try {
+        const eventData = this.realtimeEventService.createEventData(
+          'created',
+          'transaction',
+          savedTransaction._id.toString(),
+          savedTransaction,
+          {
+            id: user.userId,
+            email: user.email || 'unknown@system.com',
+            role: user.role as UserRole,
+            branchId: createTransactionDto.branchId,
+            branch: user.branch || 'System Branch', 
+          }
+        );
+        this.realtimeEventService.emitTransactionCreated(eventData);
+      } catch (realtimeError) {
+        console.error('Failed to emit real-time event:', realtimeError);
+        // Don't throw error - real-time event failure shouldn't fail the transaction
+      }
+
+      // Return transaction with client balance for registered clients
+      if (clientId) {
+        const updatedClient = await this.clientsService.findById(clientId.toString());
+        return {
+          ...savedTransaction.toObject(),
+          clientBalance: updatedClient.balance,
+        };
+      }
+
+      return savedTransaction.toObject();
+    });
   }
 
   async findAll(query: QueryTransactionsDto): Promise<Transaction[]> {

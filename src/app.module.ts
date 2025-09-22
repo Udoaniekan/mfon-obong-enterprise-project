@@ -4,6 +4,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 // import configuration from './config/configuration';
 import { AppService } from './app.service';
 import { AppController } from './app.controller';
+import { CommonModule } from './common/common.module';
 import { SeedModule } from './modules/seed/seed.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
@@ -25,6 +26,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 
 @Module({
   imports: [
+    CommonModule,
     ConfigModule.forRoot({
       isGlobal: true,
       load: [databaseConfig, jwtConfig], // Restored

@@ -3,6 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { Product, ProductSchema } from './schemas/product.schema';
 import { ProductsService } from './services/products.service';
 import { ProductsController } from './controllers/products.controller';
+import { InventoryController } from './controllers/inventory.controller';
 import { CategoriesModule } from '../categories/categories.module';
 import { SystemActivityLogModule } from '../system-activity-logs/system-activity-log.module';
 import { WebSocketModule } from '../websocket/websocket.module';
@@ -15,7 +16,7 @@ import { WebSocketModule } from '../websocket/websocket.module';
     WebSocketModule,
   ],
   providers: [ProductsService],
-  controllers: [ProductsController],
+  controllers: [ProductsController, InventoryController],
   exports: [ProductsService, MongooseModule],
 })
 export class ProductsModule {}

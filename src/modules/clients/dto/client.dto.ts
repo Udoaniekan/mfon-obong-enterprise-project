@@ -10,6 +10,10 @@ import {
   IsMongoId,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { 
+  IsValidMoney, 
+  IsValidNigerianPhone 
+} from '../../../common/decorators/validation.decorators';
 
 export class CreateClientDto {
   @IsNotEmpty()
@@ -17,7 +21,7 @@ export class CreateClientDto {
   name: string;
 
   @IsNotEmpty()
-  @IsString()
+  @IsValidNigerianPhone()
   phone: string;
 
   @IsOptional()
@@ -33,7 +37,7 @@ export class CreateClientDto {
   address?: string;
 
   @IsOptional()
-  @IsNumber()
+  @IsValidMoney()
   balance?: number;
 }
 
@@ -43,7 +47,7 @@ export class UpdateClientDto {
   name?: string;
 
   @IsOptional()
-  @IsString()
+  @IsValidNigerianPhone()
   phone?: string;
 
   @IsOptional()
@@ -59,7 +63,7 @@ export class UpdateClientDto {
   address?: string;
 
   @IsOptional()
-  @IsNumber()
+  @IsValidMoney()
   balance?: number;
 }
 
@@ -69,8 +73,7 @@ export class AddTransactionDto {
   type: 'DEPOSIT' | 'PURCHASE' | 'PICKUP';
 
   @IsNotEmpty()
-  @IsNumber()
-  @Min(0)
+  @IsValidMoney()
   amount: number;
 
   @IsNotEmpty()
@@ -93,13 +96,11 @@ export class QueryClientsDto {
   search?: string;
 
   @IsOptional()
-  @IsNumber()
-  @Min(0)
+  @IsValidMoney()
   minBalance?: number;
 
   @IsOptional()
-  @IsNumber()
-  @Min(0)
+  @IsValidMoney()
   maxBalance?: number;
 
   @IsOptional()

@@ -17,6 +17,7 @@ import { UserDocument } from '../../users/schemas/user.schema';
 import { UserRole } from '../../../common/enums';
 import { SystemActivityLogService } from '../../system-activity-logs/services/system-activity-log.service';
 import { RealtimeEventService } from '../../websocket/realtime-event.service';
+import { DecimalService } from '../../../common/services/decimal.service';
 
 @Injectable()
 export class ProductsService {
@@ -25,6 +26,7 @@ export class ProductsService {
     private readonly categoriesService: CategoriesService,
     private readonly systemActivityLogService: SystemActivityLogService,
     private readonly realtimeEventService: RealtimeEventService,
+    private readonly decimalService: DecimalService,
   ) {}
 
   async create(
@@ -261,6 +263,7 @@ export class ProductsService {
     updateStockDto: UpdateStockDto,
     currentUser?: UserDocument,
     device?: string,
+    session?: any, // MongoDB session for transactions
   ): Promise<ProductDocument> {
     const filter: any = { _id: id };
 
@@ -272,57 +275,79 @@ export class ProductsService {
       filter.branchId = new Types.ObjectId(currentUser.branchId);
     }
 
-    // Get the product first to validate it exists
-    const product = await this.productModel.findOne(filter).exec();
-    if (!product) {
-      throw new NotFoundException(`Product with ID ${id} not found`);
-    }
-
     const { quantity, unit, operation } = updateStockDto;
 
-    // Validate the unit matches
-    if (product.unit !== unit) {
+    // Calculate the increment value for atomic operation
+    const increment = operation === StockOperation.ADD ? quantity : -quantity;
+
+    // For SUBTRACT operations, ensure we don't go below zero
+    // For ADD operations, just increment
+    const updateQuery: any = { $inc: { stock: increment } };
+    
+    if (operation === StockOperation.SUBTRACT) {
+      // Add condition to prevent negative stock
+      filter.stock = { $gte: quantity };
+    }
+
+    // Perform atomic update with session support
+    const updateOptions: any = { 
+      new: true, // Return the updated document
+      runValidators: true,
+    };
+    
+    if (session) {
+      updateOptions.session = session;
+    }
+
+    // Atomic update operation
+    const result = await this.productModel
+      .findOneAndUpdate(filter, updateQuery, updateOptions)
+      .exec();
+
+    if (!result) {
+      if (operation === StockOperation.SUBTRACT) {
+        // Get current stock to show in error message
+        const currentProduct = await this.productModel.findById(id).exec();
+        throw new BadRequestException(
+          `Insufficient stock: current ${currentProduct?.stock || 0}, requested ${quantity}`,
+        );
+      } else {
+        throw new NotFoundException(`Product with ID ${id} not found`);
+      }
+    }
+
+    // Cast the result to ProductDocument to access properties
+    const updatedProduct = result as unknown as ProductDocument;
+
+    // Validate the unit matches (after successful update)
+    if (updatedProduct.unit !== unit) {
+      // Rollback the stock change if unit doesn't match
+      const rollbackIncrement = operation === StockOperation.ADD ? -quantity : quantity;
+      await this.productModel
+        .findByIdAndUpdate(
+          id,
+          { $inc: { stock: rollbackIncrement } },
+          session ? { session } : {},
+        )
+        .exec();
+      
       throw new BadRequestException(
-        `Unit mismatch: product has unit "${product.unit}", but operation specified "${unit}"`,
+        `Unit mismatch: product has unit "${updatedProduct.unit}", but operation specified "${unit}"`,
       );
     }
 
-    // Validate stock level for subtraction
-    if (operation === StockOperation.SUBTRACT && product.stock < quantity) {
-      throw new BadRequestException(
-        `Insufficient stock: current ${product.stock}, requested ${quantity}`,
-      );
-    }
-
-    // Calculate new stock
-    const newStock =
-      operation === StockOperation.ADD
-        ? product.stock + quantity
-        : product.stock - quantity;
-
-    // Use findOneAndUpdate to update in one atomic operation
-    await this.productModel
-      .findOneAndUpdate(filter, { $set: { stock: newStock } })
-      .exec();
-
-    // Return the updated product with populated fields
-    const updatedProduct = await this.productModel
-      .findOne(filter)
-      .populate('categoryId', 'name units')
-      .populate('branchId', 'name')
-      .exec();
-
-    // Log stock update activity
+    // Log stock update activity (don't fail transaction if logging fails)
     try {
       await this.systemActivityLogService.createLog({
         action: 'STOCK_UPDATED',
-        details: `Stock ${operation === StockOperation.ADD ? 'increased' : 'decreased'} for ${updatedProduct.name}: ${quantity} ${unit} (New stock: ${newStock})`,
+        details: `Stock ${operation === StockOperation.ADD ? 'increased' : 'decreased'} for ${updatedProduct.name}: ${quantity} ${unit} (New stock: ${updatedProduct.stock})`,
         performedBy: currentUser?.email || currentUser?.name || 'System',
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
-      });
+      }, session ? { session } : undefined);
     } catch (logError) {
       console.error('Failed to log stock update:', logError);
+      // Don't throw error - logging failure shouldn't fail the stock update
     }
 
     return updatedProduct;
@@ -475,6 +500,8 @@ export class ProductsService {
   }
 
   calculatePrice(product: Product | ProductDocument, quantity: number): number {
-    return quantity * product.unitPrice;
+    // Use decimal service for precise financial calculations
+    const price = this.decimalService.multiply(product.unitPrice, quantity);
+    return this.decimalService.toNumber(price);
   }
 }

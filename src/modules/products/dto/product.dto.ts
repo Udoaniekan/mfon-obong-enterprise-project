@@ -7,6 +7,10 @@ import {
   IsMongoId,
   IsEnum,
 } from 'class-validator';
+import { 
+  IsValidMoney, 
+  IsValidQuantity 
+} from '../../../common/decorators/validation.decorators';
 
 export class CreateProductDto {
   @IsNotEmpty()
@@ -22,18 +26,15 @@ export class CreateProductDto {
   unit: string;
 
   @IsNotEmpty()
-  @IsNumber()
-  @Min(0)
+  @IsValidMoney()
   unitPrice: number;
 
   @IsNotEmpty()
-  @IsNumber()
-  @Min(0)
+  @IsValidQuantity()
   stock: number;
 
   @IsNotEmpty()
-  @IsNumber()
-  @Min(0)
+  @IsValidQuantity()
   minStockLevel: number;
 
   @IsNotEmpty()
@@ -55,18 +56,15 @@ export class UpdateProductDto {
   unit?: string;
 
   @IsOptional()
-  @IsNumber()
-  @Min(0)
+  @IsValidMoney()
   unitPrice?: number;
 
   @IsOptional()
-  @IsNumber()
-  @Min(0)
+  @IsValidQuantity()
   stock?: number;
 
   @IsOptional()
-  @IsNumber()
-  @Min(0)
+  @IsValidQuantity()
   minStockLevel?: number;
 
   @IsOptional()
@@ -80,8 +78,7 @@ export enum StockOperation {
 }
 
 export class UpdateStockDto {
-  @IsNumber()
-  @Min(1)
+  @IsValidQuantity()
   @IsNotEmpty()
   readonly quantity: number;
 

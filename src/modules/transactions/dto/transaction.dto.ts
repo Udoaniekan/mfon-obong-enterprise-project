@@ -12,13 +12,20 @@ import {
   IsNotEmpty,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { 
+  IsValidMoney, 
+  IsValidQuantity, 
+  IsValidNigerianPhone,
+  IsValidTransactionTotal 
+} from '../../../common/decorators/validation.decorators';
 
 export class WalkInClientDto {
   @IsString()
+  @IsNotEmpty()
   name: string;
 
   @IsOptional()
-  @IsString()
+  @IsValidNigerianPhone()
   phone?: string;
 
   @IsOptional()
@@ -30,16 +37,15 @@ export class TransactionItemDto {
   @IsMongoId()
   productId: string;
 
-  @IsNumber()
-  @Min(0)
+  @IsValidQuantity()
   quantity: number;
 
   @IsString()
+  @IsNotEmpty()
   unit: string;
 
   @IsOptional()
-  @IsNumber()
-  @Min(0)
+  @IsValidMoney()
   discount?: number;
 }
 
@@ -71,13 +77,11 @@ export class CreateTransactionDto {
   type: TransactionType;
 
   @IsOptional()
-  @IsNumber()
-  @Min(0)
+  @IsValidMoney()
   discount?: number;
 
   @IsOptional()
-  @IsNumber()
-  @Min(0)
+  @IsValidMoney()
   amountPaid?: number;
 
   @IsOptional()
@@ -90,12 +94,22 @@ export class CreateTransactionDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  // Computed field validation - total should match calculated total
+  @IsOptional()
+  @IsValidMoney()
+  @IsValidTransactionTotal()
+  total?: number;
+
+  // Computed field validation - subtotal 
+  @IsOptional()
+  @IsValidMoney()
+  subtotal?: number;
 }
 
 export class UpdateTransactionDto {
   @IsOptional()
-  @IsNumber()
-  @Min(0)
+  @IsValidMoney()
   amountPaid?: number;
 
   @IsOptional()

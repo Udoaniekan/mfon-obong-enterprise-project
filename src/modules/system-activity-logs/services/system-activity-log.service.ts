@@ -18,6 +18,7 @@ export class SystemActivityLogService {
 
     async createLog(
       createSystemActivityLogDto: CreateSystemActivityLogDto,
+      options?: { session?: any }, // MongoDB session support
     ): Promise<SystemActivityLog> {
       try {
         this.logger.log(
@@ -29,7 +30,10 @@ export class SystemActivityLogService {
           timestamp: createSystemActivityLogDto.timestamp || new Date(),
         });
 
-        const savedLog = await logEntry.save();
+        // Save with session support if provided
+        const saveOptions = options?.session ? { session: options.session } : {};
+        const savedLog = await logEntry.save(saveOptions);
+        
         this.logger.log(
           `Log entry created successfully with ID: ${savedLog._id}`,
         );
