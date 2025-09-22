@@ -18,6 +18,9 @@ import { UserRole } from '../../../common/enums';
 import { SystemActivityLogService } from '../../system-activity-logs/services/system-activity-log.service';
 import { RealtimeEventService } from '../../websocket/realtime-event.service';
 import { DecimalService } from '../../../common/services/decimal.service';
+import { PaginationService, PaginatedResult } from '../../../common/services/pagination.service';
+import { QueryOptimizationService } from '../../../common/services/query-optimization.service';
+import { CacheService } from '../../../common/services/cache.service';
 
 @Injectable()
 export class ProductsService {
@@ -27,6 +30,9 @@ export class ProductsService {
     private readonly systemActivityLogService: SystemActivityLogService,
     private readonly realtimeEventService: RealtimeEventService,
     private readonly decimalService: DecimalService,
+    private readonly paginationService: PaginationService,
+    private readonly queryOptimizationService: QueryOptimizationService,
+    private readonly cacheService: CacheService,
   ) {}
 
   async create(
@@ -141,6 +147,67 @@ export class ProductsService {
       .populate('categoryId', 'name units')
       .populate('branchId', 'name')
       .exec();
+  }
+
+  /**
+   * Enhanced findAll with pagination, filtering, and caching
+   */
+  async findAllPaginated(
+    filters: any = {},
+    options: any = {},
+    currentUser?: UserDocument,
+  ): Promise<PaginatedResult<ProductDocument>> {
+    // Build base filter
+    const baseFilter: any = {};
+    
+    // Default to active products only
+    if (filters.includeInactive !== true) {
+      baseFilter.isActive = true;
+    }
+
+    // Branch-based filtering for non-admin users
+    if (
+      currentUser &&
+      ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
+    ) {
+      baseFilter.branchId = new Types.ObjectId(currentUser.branchId);
+    }
+
+    // Merge with additional filters
+    const optimizedFilters = this.queryOptimizationService.optimizeFilters({
+      ...baseFilter,
+      ...filters,
+    });
+
+    // Set up pagination options
+    const paginationOptions = {
+      page: options.page || 1,
+      limit: options.limit || 10,
+      sort: this.queryOptimizationService.optimizeSort(options.sort),
+      populate: ['categoryId', 'branchId'],
+      select: options.select,
+    };
+
+    // Generate cache key
+    const cacheKey = this.cacheService.generateKey(
+      'products:paginated',
+      JSON.stringify(optimizedFilters),
+      JSON.stringify(paginationOptions),
+      currentUser?.branchId?.toString() || 'all'
+    );
+
+    // Try to get from cache first
+    return this.cacheService.getOrSet(
+      cacheKey,
+      async () => {
+        return this.paginationService.paginate(
+          this.productModel,
+          optimizedFilters,
+          paginationOptions
+        );
+      },
+      2 * 60 * 1000 // Cache for 2 minutes
+    );
   }
 
   async findById(

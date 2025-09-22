@@ -21,7 +21,8 @@
     "seed": "ts-node -r tsconfig-paths/register src/cli.ts",
     "seed:superadmin": "npm run seed -- seed:superadmin",
     "seed:maintainer": "npm run seed -- seed:maintainer",
-    "seed:categories": "npm run seed -- seed:categories"
+    "seed:categories": "npm run seed -- seed:categories",
+    "db:optimize": "ts-node -r tsconfig-paths/register src/scripts/setup-database-indexes.ts"
   },
   "dependencies": {
     "@fastify/csrf-protection": "^7.1.0",
@@ -79,6 +80,7 @@
     "@nestjs/cli": "^11.0.10",
     "@nestjs/schematics": "^10.0.0",
     "@nestjs/testing": "^10.0.0",
+    "@types/compression": "^1.8.1",
     "@types/cookie-parser": "^1.4.9",
     "@types/express": "^5.0.0",
     "@types/jest": "^29.5.2",

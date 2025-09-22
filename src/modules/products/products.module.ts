@@ -7,6 +7,9 @@ import { InventoryController } from './controllers/inventory.controller';
 import { CategoriesModule } from '../categories/categories.module';
 import { SystemActivityLogModule } from '../system-activity-logs/system-activity-log.module';
 import { WebSocketModule } from '../websocket/websocket.module';
+import { PaginationService } from '../../common/services/pagination.service';
+import { CacheService } from '../../common/services/cache.service';
+import { QueryOptimizationService } from '../../common/services/query-optimization.service';
 
 @Module({
   imports: [
@@ -15,7 +18,12 @@ import { WebSocketModule } from '../websocket/websocket.module';
     SystemActivityLogModule,
     WebSocketModule,
   ],
-  providers: [ProductsService],
+  providers: [
+    ProductsService,
+    PaginationService,
+    CacheService,
+    QueryOptimizationService,
+  ],
   controllers: [ProductsController, InventoryController],
   exports: [ProductsService, MongooseModule],
 })

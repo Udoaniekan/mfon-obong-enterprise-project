@@ -9,6 +9,7 @@ import {
   UseGuards,
   Request,
   BadRequestException,
+  Query,
 } from '@nestjs/common';
 import { extractDeviceInfo } from '../../system-activity-logs/utils/device-extractor.util';
 import { ProductsService } from '../services/products.service';
@@ -22,6 +23,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { UserRole } from '../../../common/enums';
 import { Roles } from 'src/decorators/roles.decorators';
+import { PaginatedResult } from '../../../common/services/pagination.service';
 
 @Controller('products')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -46,6 +48,52 @@ export class ProductsController {
   )
   async findAll(@Request() req): Promise<Product[]> {
     return this.productsService.findAll(req.user);
+  }
+
+  @Get('paginated')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.MAINTAINER,
+    UserRole.STAFF,
+  )
+  async findAllPaginated(
+    @Query() query: any,
+    @Request() req
+  ): Promise<PaginatedResult<ProductDocument>> {
+    const { page, limit, sort, search, categoryId, minStock, maxStock, includeInactive, ...filters } = query;
+    
+    // Build filters object
+    const filterObj: any = { ...filters };
+    
+    if (search) {
+      filterObj.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { unit: { $regex: search, $options: 'i' } }
+      ];
+    }
+    
+    if (categoryId) {
+      filterObj.categoryId = categoryId;
+    }
+    
+    if (minStock !== undefined || maxStock !== undefined) {
+      filterObj.stock = {};
+      if (minStock !== undefined) filterObj.stock.$gte = Number(minStock);
+      if (maxStock !== undefined) filterObj.stock.$lte = Number(maxStock);
+    }
+    
+    if (includeInactive === 'true') {
+      filterObj.includeInactive = true;
+    }
+
+    const options = {
+      page: page ? parseInt(page) : 1,
+      limit: limit ? parseInt(limit) : 10,
+      sort,
+    };
+
+    return this.productsService.findAllPaginated(filterObj, options, req.user);
   }
 
   @Get('low-stock')

@@ -24,6 +24,11 @@ import { databaseConfig, jwtConfig } from './config/configuration';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { SimpleSanitizationMiddleware } from './common/middleware/simple-sanitization.middleware';
 import { SimpleRateLimitMiddleware } from './common/middleware/simple-rate-limit.middleware';
+import { CompressionMiddleware } from './common/middleware/compression.middleware';
+import { DatabaseIndexesService } from './common/services/database-indexes.service';
+import { PaginationService } from './common/services/pagination.service';
+import { CacheService } from './common/services/cache.service';
+import { QueryOptimizationService } from './common/services/query-optimization.service';
 // ... your other imports
 
 @Module({
@@ -59,10 +64,21 @@ import { SimpleRateLimitMiddleware } from './common/middleware/simple-rate-limit
     NotificationsModule
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    DatabaseIndexesService,
+    PaginationService,
+    CacheService,
+    QueryOptimizationService,
+  ],
 })
 export class AppModule {
   configure(consumer: MiddlewareConsumer) {
+    // Apply compression to all routes
+    consumer
+      .apply(CompressionMiddleware)
+      .forRoutes('*');
+    
     // Apply rate limiting to all routes
     consumer
       .apply(SimpleRateLimitMiddleware)
