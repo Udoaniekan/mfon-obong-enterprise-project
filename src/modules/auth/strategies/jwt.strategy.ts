@@ -43,8 +43,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
 
     // Check if token is blacklisted
-    if (token && this.authService.isTokenBlacklisted(token)) {
-      throw new UnauthorizedException('Token has been invalidated');
+    if (token) {
+      const isBlacklisted = await this.authService.isTokenBlacklisted(token);
+      if (isBlacklisted) {
+        throw new UnauthorizedException('Token has been invalidated');
+      }
     }
 
     // Check if user is still active and not blocked

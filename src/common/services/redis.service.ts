@@ -11,6 +11,32 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit() {
     try {
+      // Check if we're in development mode and skip Redis if not configured
+      const isProduction = this.configService.get('NODE_ENV') === 'production';
+      const redisHost = this.configService.get('REDIS_HOST');
+      
+      if (!isProduction && !redisHost) {
+        this.logger.warn('Redis not configured - using in-memory storage for development');
+        // Create a mock Redis client for development
+        this.redisClient = {
+          set: async () => 'OK',
+          get: async () => null,
+          del: async () => 1,
+          sadd: async () => 1,
+          srem: async () => 1,
+          smembers: async () => [],
+          expire: async () => 1,
+          ttl: async () => -1,
+          exists: async () => 0,
+          hset: async () => 1,
+          hget: async () => null,
+          hdel: async () => 1,
+          hgetall: async () => ({}),
+          disconnect: async () => {},
+        } as any;
+        return;
+      }
+
       this.redisClient = new Redis({
         host: this.configService.get('REDIS_HOST', 'localhost'),
         port: this.configService.get('REDIS_PORT', 6379),

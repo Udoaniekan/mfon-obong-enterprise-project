@@ -2,14 +2,14 @@ import { Controller, Post, Body, Request, Response, UseGuards, BadRequestExcepti
 import { AuthService } from '../services/auth.service';
 import { OtpRequestDto, OtpVerifyDto } from '../dto/otp-request.dto';
 import { RefreshTokenDto } from '../dto/auth.dto';
-import { AuthGuard } from '@nestjs/passport';
+import { LocalAuthGuard } from '../guards/local-auth.guard';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 
 @Controller('/auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  @UseGuards(AuthGuard('local'))
+  @UseGuards(LocalAuthGuard)
   @Post('/login')
   async login(@Request() req, @Response({ passthrough: true }) res) {
     const userAgent = req.headers['user-agent'];

@@ -5,9 +5,12 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
 import * as cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const configService = app.get(ConfigService);
 
   // Basic security headers
   app.use(helmet());
@@ -56,8 +59,10 @@ async function bootstrap() {
   // Global filters
   app.useGlobalFilters(new GlobalExceptionFilter());
 
-  const port = process.env.PORT || 3000;
-  await app.listen(port);
+  const port = configService.get('PORT');
+  await app.listen(port, () => {
+    console.log(`Server is running on port ${port}`);
+  });
 
   Logger.log(`Application is running on: http://localhost:${port}/api`, 'Bootstrap');
 }
