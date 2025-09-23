@@ -25,6 +25,8 @@ interface AuthenticatedSocket extends Socket {
     origin: [
       'http://localhost:3000',
       'http://localhost:3001',
+      'http://localhost:4200',
+      'http://localhost:5173',
       'https://your-frontend-domain.com',
       'https://mfon-obong-enterprises.pipeops.net',
       'https://frontend-six-liard-24.vercel.app'
@@ -44,14 +46,18 @@ export class AppWebSocketGateway
 
   async handleConnection(client: AuthenticatedSocket) {
     try {
-      const token = client.handshake.auth?.token || client.handshake.headers?.authorization?.replace('Bearer ', '');
+      const token = client.handshake.auth?.token || 
+                   client.handshake.headers?.authorization?.replace('Bearer ', '') ||
+                   client.handshake.query?.token;
       
       if (!token) {
         this.logger.warn(`Client ${client.id} disconnected: No token provided`);
+        client.emit('error', 'Authentication token required');
         client.disconnect();
         return;
       }
 
+      // Verify token
       const decoded = this.jwtService.verify(token);
       client.userId = decoded.sub; // JWT uses 'sub' field, not 'userId'
       client.userEmail = decoded.email;
@@ -65,8 +71,17 @@ export class AppWebSocketGateway
       this.logger.log(
         `Client connected: ${client.userEmail} (${client.userRole}) - Socket ID: ${client.id}`,
       );
+      
+      // Send success confirmation
+      client.emit('authenticated', { 
+        message: 'Connected successfully', 
+        userId: client.userId,
+        role: client.userRole 
+      });
+      
     } catch (error) {
       this.logger.error(`Authentication failed for client ${client.id}:`, error.message);
+      client.emit('error', 'Authentication failed: ' + error.message);
       client.disconnect();
     }
   }
