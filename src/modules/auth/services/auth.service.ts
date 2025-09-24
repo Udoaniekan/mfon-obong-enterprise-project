@@ -296,7 +296,7 @@ export class AuthService {
     try {
       // For development, we don't maintain a blacklist
       // In production, you'd want to blacklist the token
-      console.log('Token invalidated:', refreshToken.substring(0, 10) + '...');
+      // Token invalidated (sensitive info hidden)
     } catch (error) {
       this.logger.error('Failed to invalidate refresh token:', error);
     }

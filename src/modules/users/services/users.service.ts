@@ -99,10 +99,6 @@ export class UsersService {
     currentUser?: { userId: string; email: string; role: string; name?: string },
     device?: string
   ): Promise<User> {
-    console.log('Creating user with data:', {
-      ...createUserDto,
-      password: '[REDACTED]',
-    });
     const { email, password, branchId, branch } = createUserDto;
 
     const existingUser = await this.userModel.findOne({ email });
@@ -158,7 +154,7 @@ export class UsersService {
       .select('-password')
       .populate('branchId', 'name')
       .exec();
-    console.log('Users filtered by branch:', JSON.stringify(users, null, 2));
+    console.log(`Users filtered by branch: Found ${users.length} users`);
     return users;
   }
 

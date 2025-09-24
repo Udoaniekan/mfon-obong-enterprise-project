@@ -50,14 +50,14 @@ export class SystemActivityLogService {
 
   async getLogs(): Promise<SystemActivityLog[]> {
   try {
-    this.logger.log(`Fetching all system activity logs`);
+    // this.logger.log(`Fetching all system activity logs`); // Disabled verbose logging
 
     const logs = await this.systemActivityLogModel
       .find()
       .sort({ timestamp: -1 }) // newest first
       .exec();
 
-    this.logger.log(`Found ${logs.length} log entries`);
+    // this.logger.log(`Found ${logs.length} log entries`); // Disabled verbose logging
 
     return logs;
   } catch (error) {

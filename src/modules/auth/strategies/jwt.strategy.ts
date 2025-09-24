@@ -18,7 +18,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   ) {
     const jwtSecret =
       configService.get<string>('JWT_SECRET') || 'your-fallback-secret-key';
-    console.log('JWT_SECRET from JwtStrategy:', jwtSecret);
 
     super({
       jwtFromRequest: (req) => {
