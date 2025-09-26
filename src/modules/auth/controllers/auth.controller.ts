@@ -15,21 +15,38 @@ export class AuthController {
     const userAgent = req.headers['user-agent'];
     const result = await this.authService.login(req.user, userAgent);
     
-    // Set HttpOnly cookies
+    // Set HttpOnly cookies with proper development/production settings
     const isProduction = process.env.NODE_ENV === 'production';
+    const isDevelopment = process.env.NODE_ENV === 'development';
     
-    res.cookie('accessToken', result.access_token, {
-      httpOnly: true,
-      secure: true, // Always secure for cross-origin cookies
-      maxAge: 60 * 60 * 1000, // 1 hour
-      sameSite: 'none' // Allow cross-origin requests
+    console.log('Setting authentication cookies:', { 
+      isProduction, 
+      isDevelopment,
+      NODE_ENV: process.env.NODE_ENV 
     });
     
-    res.cookie('refreshToken', result.refresh_token, {
+    const cookieOptions = {
       httpOnly: true,
-      secure: true, // Always secure for cross-origin cookies
+      secure: isProduction, // Only secure in production (HTTPS required)
+      maxAge: 60 * 60 * 1000, // 1 hour
+      sameSite: isProduction ? 'none' as const : 'lax' as const, // 'lax' for development, 'none' for production
+    };
+    
+    const refreshCookieOptions = {
+      httpOnly: true,
+      secure: isProduction, // Only secure in production
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      sameSite: 'none' // Allow cross-origin requests
+      sameSite: isProduction ? 'none' as const : 'lax' as const,
+    };
+    
+    res.cookie('accessToken', result.access_token, cookieOptions);
+    res.cookie('refreshToken', result.refresh_token, refreshCookieOptions);
+    
+    console.log('✅ Cookies set:', {
+      accessToken: 'Set with maxAge ' + cookieOptions.maxAge,
+      refreshToken: 'Set with maxAge ' + refreshCookieOptions.maxAge,
+      secure: cookieOptions.secure,
+      sameSite: cookieOptions.sameSite
     });
     
     // Return user info WITH tokens for backwards compatibility

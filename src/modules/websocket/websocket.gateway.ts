@@ -44,12 +44,35 @@ export class AppWebSocketGateway
 
   async handleConnection(client: AuthenticatedSocket) {
     try {
-      const token = client.handshake.auth?.token || client.handshake.headers?.authorization?.replace('Bearer ', '');
+      // Try to get token from multiple sources: auth field, authorization header, or cookies
+      let token = client.handshake.auth?.token || 
+                  client.handshake.headers?.authorization?.replace('Bearer ', '');
+      
+      // If no token in auth/headers, try to get from cookies
+      if (!token && client.handshake.headers?.cookie) {
+        const cookies = client.handshake.headers.cookie
+          .split(';')
+          .reduce((acc, cookie) => {
+            const [name, value] = cookie.trim().split('=');
+            acc[name] = value;
+            return acc;
+          }, {} as Record<string, string>);
+        
+        // Try accessToken first, then refreshToken as fallback
+        token = cookies.accessToken || cookies.refreshToken;
+      }
       
       if (!token) {
-        this.logger.warn(`Client ${client.id} disconnected: No token provided`);
-        client.disconnect();
-        return;
+        // Try to get user info from query params as fallback (for debugging)
+        const queryToken = client.handshake.query?.token;
+        if (queryToken && typeof queryToken === 'string') {
+          token = queryToken;
+        } else {
+          this.logger.warn(`Client ${client.id} disconnected: No token provided`);
+          client.emit('auth_error', { message: 'Authentication required' });
+          client.disconnect();
+          return;
+        }
       }
 
       const decoded = this.jwtService.verify(token);
@@ -122,31 +145,79 @@ export class AppWebSocketGateway
 
     switch (actorRole) {
       case UserRole.STAFF:
-        // STAFF actions are seen by their ADMIN and SUPER_ADMIN
-        if (branchId) {
-          rooms.push(`admin_${branchId}`);
+        // STAFF actions are seen by:
+        // 1. The actor themselves (their personal room)
+        if (data.actorId) {
+          rooms.push(`user_${data.actorId}`);
         }
+        // 2. All STAFF in the same branch (for peer visibility)
+        if (branchId) {
+          rooms.push(`staff_${branchId}`);
+          // 3. Their branch ADMIN
+          rooms.push(`admin_${branchId}`);
+          // 4. Branch-wide visibility
+          rooms.push(`branch_${branchId}`);
+        }
+        // 5. SUPER_ADMIN (can see everything)
         rooms.push('super_admin');
         break;
 
       case UserRole.ADMIN:
-        // ADMIN actions are seen by SUPER_ADMIN and MAINTAINER (for special actions)
+        // ADMIN actions are seen by:
+        // 1. The actor themselves
+        if (data.actorId) {
+          rooms.push(`user_${data.actorId}`);
+        }
+        // 2. All in their branch (ADMIN and STAFF)
+        if (branchId) {
+          rooms.push(`branch_${branchId}`);
+          rooms.push(`admin_${branchId}`);
+          rooms.push(`staff_${branchId}`);
+        }
+        // 3. SUPER_ADMIN
         rooms.push('super_admin');
+        // 4. MAINTAINER for special actions
         if (this.isSpecialAction(event)) {
           rooms.push('maintainer');
         }
         break;
 
       case UserRole.SUPER_ADMIN:
-        // SUPER_ADMIN actions might be seen by MAINTAINER
+        // SUPER_ADMIN actions are seen by:
+        // 1. The actor themselves
+        if (data.actorId) {
+          rooms.push(`user_${data.actorId}`);
+        }
+        // 2. All SUPER_ADMINs
+        rooms.push('super_admin');
+        // 3. All branches (global visibility)
+        rooms.push('all_branches');
+        rooms.push('all_admins');
+        rooms.push('all_staff');
+        // 4. MAINTAINER for special actions
         if (this.isSpecialAction(event)) {
           rooms.push('maintainer');
         }
         break;
+
+      case UserRole.MAINTAINER:
+        // MAINTAINER actions are seen by:
+        // 1. The actor themselves
+        if (data.actorId) {
+          rooms.push(`user_${data.actorId}`);
+        }
+        // 2. All MAINTAINERs
+        rooms.push('maintainer');
+        // 3. SUPER_ADMIN
+        rooms.push('super_admin');
+        break;
     }
 
+    // Remove duplicates
+    const uniqueRooms = [...new Set(rooms)];
+
     // Emit to all relevant rooms
-    rooms.forEach(room => {
+    uniqueRooms.forEach(room => {
       this.server.to(room).emit(event, {
         ...data,
         timestamp: new Date(),
@@ -155,7 +226,7 @@ export class AppWebSocketGateway
       });
     });
 
-    this.logger.log(`Emitted ${event} to rooms: ${rooms.join(', ')}`);
+    this.logger.log(`Emitted ${event} to rooms: ${uniqueRooms.join(', ')}`);
   }
 
   private isSpecialAction(event: string): boolean {

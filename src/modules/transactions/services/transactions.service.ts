@@ -235,10 +235,10 @@ export class TransactionsService {
           branch: user.branch || 'System Branch', 
         }
       );
+      
       this.realtimeEventService.emitTransactionCreated(eventData);
-      console.log('✅ Real-time transaction event emitted');
     } catch (realtimeError) {
-      console.error('Failed to emit real-time transaction event:', realtimeError);
+      console.error('❌ Failed to emit real-time transaction event:', realtimeError);
       // Don't fail transaction creation if real-time event fails
     }
 
