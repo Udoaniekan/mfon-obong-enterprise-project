@@ -27,10 +27,21 @@ async function bootstrap() {
       // Production domains
       'https://mfonobongenterprise.com',
       'https://www.mfonobongenterprise.com',
+      // Render deployment (frontend) - allow this origin as well
+      'https://mfon-obong-enterprise.onrender.com',
+      // Add Render app alias if used
+      'https://mfon-obong-enterprises.onrender.com',
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+    // Allow Set-Cookie so browsers can send/receive cookies for authenticated assets
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Accept',
+      'Set-Cookie',
+    ],
+    exposedHeaders: ['Set-Cookie'],
   });
 
   // Global prefix
