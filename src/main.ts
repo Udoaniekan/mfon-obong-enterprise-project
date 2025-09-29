@@ -21,7 +21,6 @@ async function bootstrap() {
       'http://localhost:5173',
       
       // Current frontend deployments
-      'https://frontend-six-liard-24.vercel.app',
       'https://mfon-obong-enterprises.pipeops.net',
       'https://frontend-tawny-pi-78.vercel.app/',
       
