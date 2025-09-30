@@ -5,7 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Client, ClientDocument } from '../schemas/client.schema';
 import {
   CreateClientDto,
@@ -17,12 +17,15 @@ import { UserDocument } from '../../users/schemas/user.schema';
 import { UserRole } from '../../../common/enums';
 import { SystemActivityLogService } from '../../system-activity-logs/services/system-activity-log.service';
 import { RealtimeEventService } from '../../websocket/realtime-event.service';
+import { Transaction } from '../../transactions/schemas/transaction.schema';
 
 @Injectable()
 export class ClientsService {
   constructor(
     @InjectModel(Client.name)
     private readonly clientModel: Model<ClientDocument>,
+    @InjectModel(Transaction.name)
+    private readonly transactionModel: Model<Transaction>,
     private readonly systemActivityLogService: SystemActivityLogService,
     private readonly realtimeEventService: RealtimeEventService,
   ) {}
@@ -109,10 +112,53 @@ export class ClientsService {
         filter.lastTransactionDate.$lte = query.endDate;
       }
     }
-    return this.clientModel
+    
+    const clients = await this.clientModel
       .find(filter)
       .sort({ lastTransactionDate: -1 })
       .exec();
+
+    // Populate transaction details for each client
+    const enrichedClients = [];
+    for (const client of clients) {
+      const enrichedTransactions = [];
+      for (const transaction of client.transactions) {
+        if (transaction.reference && Types.ObjectId.isValid(transaction.reference)) {
+          const fullTransaction = await this.transactionModel
+            .findById(new Types.ObjectId(transaction.reference))
+            .select('amountPaid total')
+            .exec();
+          
+          const enrichedTransaction = {
+            type: transaction.type,
+            description: transaction.description,
+            date: transaction.date,
+            reference: transaction.reference,
+            _id: (transaction as any)._id,
+            amountPaid: fullTransaction?.amountPaid || 0,
+            total: fullTransaction?.total || transaction.amount,
+          };
+          
+          enrichedTransactions.push(enrichedTransaction);
+        } else {
+          enrichedTransactions.push({
+            type: transaction.type,
+            description: transaction.description,
+            date: transaction.date,
+            reference: transaction.reference,
+            _id: (transaction as any)._id,
+            amountPaid: 0,
+            total: transaction.amount,
+          });
+        }
+      }
+      
+      const clientObj = client.toObject();
+      clientObj.transactions = enrichedTransactions;
+      enrichedClients.push(clientObj);
+    }
+
+    return enrichedClients;
   }
 
   async findAllActive(
