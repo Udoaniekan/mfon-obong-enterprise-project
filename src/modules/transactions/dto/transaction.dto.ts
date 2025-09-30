@@ -90,6 +90,12 @@ export class CreateTransactionDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  // Optional accounting date for backdating transactions. If omitted, server will use current date.
+  @IsOptional()
+  @Type(() => Date)
+  @IsDate()
+  date?: Date;
 }
 
 export class UpdateTransactionDto {

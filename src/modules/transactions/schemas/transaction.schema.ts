@@ -85,6 +85,10 @@ export class Transaction {
   @Prop()
   pickupDate?: Date;
 
+  // Accounting date for the transaction (can be backdated). If not provided, service will set this to the current date.
+  @Prop()
+  date?: Date;
+
   @Prop({ required: true, type: Types.ObjectId, ref: 'Branch' })
   branchId: Types.ObjectId;
 
@@ -103,3 +107,5 @@ export class Transaction {
 }
 
 export const TransactionSchema = SchemaFactory.createForClass(Transaction);
+// Ensure invoiceNumber is unique to prevent duplicates
+TransactionSchema.index({ invoiceNumber: 1 }, { unique: true });
