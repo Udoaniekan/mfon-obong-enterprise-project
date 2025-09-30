@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -158,8 +159,11 @@ export class TransactionsService {
       status = 'COMPLETED';
     }
 
+    // Determine accounting date (used both for transaction.date and invoice prefix)
+    const accountingDate = createTransactionDto.date ? new Date(createTransactionDto.date) : new Date();
+
     const transaction = new this.transactionModel({
-      invoiceNumber: await this.generateInvoiceNumber(),
+      invoiceNumber: await this.generateInvoiceNumber(accountingDate),
       clientId,
       walkInClient,
       userId: new Types.ObjectId(user.userId),
@@ -174,32 +178,113 @@ export class TransactionsService {
       branchId: createTransactionDto.branchId,
       type: createTransactionDto.type,
       isPickedUp: createTransactionDto.type === 'PICKUP',
+      // Use provided accounting date (backdate) or default to now
+      date: accountingDate,
     });
 
-    // Update client balance only for registered clients
-    if (clientId) {
-      const ledgerType =
-        createTransactionDto.type === 'PICKUP' ? 'PICKUP' : 'PURCHASE';
-      await this.clientsService.addTransaction(clientId.toString(), {
-        type: ledgerType,
-        amount: total,
-        description: `Invoice #${transaction.invoiceNumber}`,
-        reference: transaction._id.toString(),
-      });
+    // Save transaction with retry-on-duplicate (invoiceNumber collisions)
+    const maxSaveAttempts = 5;
+    let saveAttempt = 0;
+    let savedTransaction = null as any;
+    while (saveAttempt < maxSaveAttempts) {
+      try {
+        saveAttempt++;
+        savedTransaction = await transaction.save();
+        break;
+      } catch (err: any) {
+        // Mongo duplicate key error (look for invoiceNumber anywhere in error shape)
+        const isDuplicateInvoice =
+          err?.code === 11000 && (
+            (err.keyPattern && err.keyPattern.invoiceNumber) ||
+            (err.keyValue && err.keyValue.invoiceNumber) ||
+            (typeof err.message === 'string' && err.message.includes('invoiceNumber'))
+          );
+
+        if (isDuplicateInvoice) {
+          // regenerate invoice number and retry
+          if (saveAttempt >= maxSaveAttempts) {
+            throw new ConflictException('Duplicate entry');
+          }
+          const newInv = await this.generateInvoiceNumber(accountingDate);
+          transaction.invoiceNumber = newInv;
+          continue;
+        }
+        // rethrow other errors
+        throw err;
+      }
     }
 
-    // Update stock levels
-    await Promise.all(
-      transaction.items.map(async (item) => {
+    if (!savedTransaction) {
+      throw new ConflictException('Duplicate entry');
+    }
+
+    // After successful save, perform side-effects (stock updates and client ledger)
+    // Update stock levels (and be able to revert on failure)
+    const updatedProducts: Array<{ productId: string; quantity: number; unit: string }> = [];
+    try {
+      for (const item of transaction.items) {
         await this.productsService.updateStock(item.productId.toString(), {
           quantity: item.quantity,
           unit: item.unit,
           operation: StockOperation.SUBTRACT,
         });
-      }),
-    );
+        updatedProducts.push({ productId: item.productId.toString(), quantity: item.quantity, unit: item.unit });
+      }
+    } catch (stockErr) {
+      // Attempt to revert any already-updated stock
+      for (const upd of updatedProducts) {
+        try {
+          await this.productsService.updateStock(upd.productId.toString(), {
+            quantity: upd.quantity,
+            unit: upd.unit,
+            operation: StockOperation.ADD,
+          });
+        } catch (revertErr) {
+          console.error('Failed to revert stock for', upd.productId, revertErr);
+        }
+      }
+      // Remove saved transaction to avoid inconsistent state
+      try {
+        await this.transactionModel.deleteOne({ _id: savedTransaction._id });
+      } catch (delErr) {
+        console.error('Failed to delete transaction after stock update failure', delErr);
+      }
+      throw new BadRequestException('Failed to update stock. Transaction aborted.');
+    }
 
-    const savedTransaction = await transaction.save();
+    // Update client balance only for registered clients
+    if (clientId) {
+      const ledgerType = createTransactionDto.type === 'PICKUP' ? 'PICKUP' : 'PURCHASE';
+      try {
+        await this.clientsService.addTransaction(clientId.toString(), {
+          type: ledgerType,
+          amount: total,
+          description: `Invoice #${transaction.invoiceNumber}`,
+          reference: transaction._id.toString(),
+          date: transaction.date || new Date(),
+        });
+      } catch (ledgerErr) {
+        // Attempt to revert stock
+        for (const upd of updatedProducts) {
+          try {
+            await this.productsService.updateStock(upd.productId.toString(), {
+              quantity: upd.quantity,
+              unit: upd.unit,
+              operation: StockOperation.ADD,
+            });
+          } catch (revertErr) {
+            console.error('Failed to revert stock after ledger failure for', upd.productId, revertErr);
+          }
+        }
+        // Delete the saved transaction
+        try {
+          await this.transactionModel.deleteOne({ _id: savedTransaction._id });
+        } catch (delErr) {
+          console.error('Failed to delete transaction after ledger failure', delErr);
+        }
+        throw new BadRequestException('Failed to update client ledger. Transaction aborted.');
+      }
+    }
 
     // Log transaction creation activity
     try {
@@ -271,16 +356,16 @@ export class TransactionsService {
     if (query.isPickedUp !== undefined) filter.isPickedUp = query.isPickedUp;
 
     if (query.startDate || query.endDate) {
-      filter.createdAt = {};
-      if (query.startDate) filter.createdAt.$gte = query.startDate;
-      if (query.endDate) filter.createdAt.$lte = query.endDate;
+      filter.date = {};
+      if (query.startDate) filter.date.$gte = query.startDate;
+      if (query.endDate) filter.date.$lte = query.endDate;
     }
 
     return this.transactionModel
       .find(filter)
       .populate('clientId', 'name phone')
       .populate('userId', 'name')
-      .sort({ createdAt: -1 })
+      .sort({ date: -1 })
       .exec();
   }
 
@@ -302,7 +387,7 @@ export class TransactionsService {
       .find({ branchId })
       .populate('clientId', 'name phone')
       .populate('userId', 'name')
-      .sort({ createdAt: -1 });
+      .sort({ date: -1 });
 
     return transactions;
   }
@@ -312,7 +397,7 @@ export class TransactionsService {
       .find({ userId: new Types.ObjectId(userId) })
       .populate('clientId', 'name phone')
       .populate('userId', 'name')
-      .sort({ createdAt: -1 });
+      .sort({ date: -1 });
 
     return transactions;
   }
@@ -322,7 +407,7 @@ export class TransactionsService {
       .find({ clientId: new Types.ObjectId(clientId) })
       .populate('clientId', 'name phone')
       .populate('userId', 'name')
-      .sort({ createdAt: -1 });
+      .sort({ date: -1 });
 
     return transactions;
   }
@@ -387,26 +472,66 @@ export class TransactionsService {
     return savedTransaction;
   }
 
-  async generateInvoiceNumber(): Promise<string> {
-    const date = new Date();
-    const year = date.getFullYear().toString().slice(-2);
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  async generateInvoiceNumber(date?: Date): Promise<string> {
+    const useDate = date ? new Date(date) : new Date();
+    const year = useDate.getFullYear().toString().slice(-2);
+    const month = (useDate.getMonth() + 1).toString().padStart(2, '0');
     const prefix = `INV${year}${month}`;
+    try {
+      // Use a dedicated counters collection to atomically increment sequence per prefix
+      const countersCollection = this.transactionModel.db.collection('invoice_counters');
 
-    const lastInvoice = await this.transactionModel
-      .findOne({ invoiceNumber: new RegExp(`^${prefix}`) })
-      .sort({ invoiceNumber: -1 });
+      const res = await countersCollection.findOneAndUpdate(
+        // cast to any to avoid strict driver types in TS
+        { _id: prefix } as any,
+        { $inc: { seq: 1 } } as any,
+        { upsert: true, returnDocument: 'after' } as any,
+      );
 
-    const sequence = lastInvoice
-      ? parseInt(lastInvoice.invoiceNumber.slice(-4)) + 1
-      : 1;
+      // Some driver versions/edge cases may not return the updated doc in `res.value`.
+      let seq = (res as any).value?.seq;
+      if (!seq) {
+        // Read the counter document to get the current seq value
+        try {
+          const doc = await countersCollection.findOne({ _id: prefix } as any);
+          seq = (doc as any)?.seq;
+        } catch (readErr) {
+          // Silent failure - fallback to default
+        }
+      }
 
-    return `${prefix}${sequence.toString().padStart(4, '0')}`;
+      // If still undefined, default to 1
+      seq = seq || 1;
+      return `${prefix}${seq.toString().padStart(4, '0')}`;
+    } catch (err) {
+      // Fallback to previous strategy if counters collection unavailable
+      const lastInvoice = await this.transactionModel
+        .findOne({ invoiceNumber: new RegExp(`^${prefix}`) })
+        .sort({ invoiceNumber: -1 });
+
+      const sequence = lastInvoice
+        ? parseInt(lastInvoice.invoiceNumber.slice(-4)) + 1
+        : 1;
+
+      // Try to update counters collection to at least this sequence to avoid future duplicates
+      try {
+        const countersCollection = this.transactionModel.db.collection('invoice_counters');
+        await countersCollection.updateOne(
+          { _id: prefix } as any,
+          { $max: { seq: sequence } } as any,
+          { upsert: true } as any,
+        );
+      } catch (syncErr) {
+        // Silent failure - counters sync is best effort
+      }
+
+      return `${prefix}${sequence.toString().padStart(4, '0')}`;
+    }
   }
 
   async generateReport(startDate: Date, endDate: Date) {
     const transactions = await this.transactionModel.find({
-      createdAt: { $gte: startDate, $lte: endDate },
+      date: { $gte: startDate, $lte: endDate },
     });
 
     const report = {
@@ -601,9 +726,9 @@ export class TransactionsService {
     }
 
     if (startDate || endDate) {
-      filter.createdAt = {};
-      if (startDate) filter.createdAt.$gte = startDate;
-      if (endDate) filter.createdAt.$lte = endDate;
+      filter.date = {};
+      if (startDate) filter.date.$gte = startDate;
+      if (endDate) filter.date.$lte = endDate;
     }
 
     const result = await this.transactionModel.aggregate([
@@ -622,7 +747,7 @@ export class TransactionsService {
     const transactions = await this.transactionModel
       .find(filter)
       .populate('branchId', 'name')
-      .sort({ createdAt: -1 })
+      .sort({ date: -1 })
       .limit(10);
 
     return {
@@ -652,7 +777,7 @@ export class TransactionsService {
     const filter: any = {
       type: { $in: ['PURCHASE', 'PICKUP'] },
       status: { $ne: 'CANCELLED' },
-      createdAt: { $gte: dateRange.start, $lt: dateRange.end }
+      date: { $gte: dateRange.start, $lt: dateRange.end }
     };
 
     if (branchId) {
@@ -663,10 +788,10 @@ export class TransactionsService {
       { $match: filter },
       {
         $group: {
-          _id: {
-            year: { $year: '$createdAt' },
-            month: { $month: '$createdAt' },
-            day: { $dayOfMonth: '$createdAt' }
+      _id: {
+        year: { $year: '$date' },
+        month: { $month: '$date' },
+        day: { $dayOfMonth: '$date' }
           },
           totalRevenue: { $sum: '$total' },
           transactionCount: { $sum: 1 },
@@ -706,10 +831,10 @@ export class TransactionsService {
       };
     }
 
-    const filter: any = {
+      const filter: any = {
       type: { $in: ['PURCHASE', 'PICKUP'] },
       status: { $ne: 'CANCELLED' },
-      createdAt: { $gte: dateRange.start, $lt: dateRange.end }
+      date: { $gte: dateRange.start, $lt: dateRange.end }
     };
 
     if (branchId) {
@@ -721,8 +846,8 @@ export class TransactionsService {
       {
         $group: {
           _id: {
-            year: { $year: '$createdAt' },
-            month: { $month: '$createdAt' }
+            year: { $year: '$date' },
+            month: { $month: '$date' }
           },
           totalRevenue: { $sum: '$total' },
           transactionCount: { $sum: 1 },
@@ -763,7 +888,7 @@ export class TransactionsService {
     const filter: any = {
       type: { $in: ['PURCHASE', 'PICKUP'] },
       status: { $ne: 'CANCELLED' },
-      createdAt: { $gte: dateRange.start, $lt: dateRange.end }
+      date: { $gte: dateRange.start, $lt: dateRange.end }
     };
 
     if (branchId) {
@@ -774,7 +899,7 @@ export class TransactionsService {
       { $match: filter },
       {
         $group: {
-          _id: { year: { $year: '$createdAt' } },
+      _id: { year: { $year: '$date' } },
           totalRevenue: { $sum: '$total' },
           transactionCount: { $sum: 1 },
           totalAmountPaid: { $sum: '$amountPaid' }

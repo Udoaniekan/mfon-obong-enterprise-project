@@ -56,7 +56,7 @@ export class ReportsService {
   ): Promise<SalesReport> {
     const transactions = await this.transactionModel
       .find({
-        createdAt: { $gte: startDate, $lte: endDate },
+        date: { $gte: startDate, $lte: endDate },
         status: 'COMPLETED',
       })
       .populate('clientId', 'name phone')
@@ -74,7 +74,7 @@ export class ReportsService {
     let totalPending = 0;
 
     transactions.forEach((transaction) => {
-      const dateKey = new Date(transaction.createdAt)
+      const dateKey = new Date(transaction.date)
         .toISOString()
         .split('T')[0];
       const paymentMethod = transaction.paymentMethod || 'UNKNOWN';
@@ -254,9 +254,9 @@ export class ReportsService {
       current.transactions++;
       if (
         !current.lastTransaction ||
-        transaction.createdAt > current.lastTransaction
+        transaction.date > current.lastTransaction
       ) {
-        current.lastTransaction = transaction.createdAt;
+        current.lastTransaction = transaction.date;
       }
 
       clientTransactions.set(clientId, current);
