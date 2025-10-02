@@ -4,6 +4,7 @@ import { OtpRequestDto, OtpVerifyDto } from '../dto/otp-request.dto';
 import { RefreshTokenDto } from '../dto/auth.dto';
 import { AuthGuard } from '@nestjs/passport';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
+import { CookieConfigUtil } from '../utils/cookie-config.util';
 
 @Controller('/auth')
 export class AuthController {
@@ -15,39 +16,20 @@ export class AuthController {
     const userAgent = req.headers['user-agent'];
     const result = await this.authService.login(req.user, userAgent);
     
-    // Set HttpOnly cookies with proper development/production settings
-    const isProduction = process.env.NODE_ENV === 'production';
-    const isDevelopment = process.env.NODE_ENV === 'development';
+    // Use consistent cookie configuration
+    const accessTokenOptions = CookieConfigUtil.getAccessTokenOptions();
+    const refreshTokenOptions = CookieConfigUtil.getRefreshTokenOptions();
     
     console.log('Setting authentication cookies:', { 
-      isProduction, 
-      isDevelopment,
-      NODE_ENV: process.env.NODE_ENV 
+      NODE_ENV: process.env.NODE_ENV,
+      accessTokenOptions,
+      refreshTokenOptions
     });
     
-    const cookieOptions = {
-      httpOnly: true,
-      secure: isProduction, // Only secure in production (HTTPS required)
-      maxAge: 60 * 60 * 1000, // 1 hour
-      sameSite: isProduction ? 'none' as const : 'lax' as const, // 'lax' for development, 'none' for production
-    };
+    res.cookie('accessToken', result.access_token, accessTokenOptions);
+    res.cookie('refreshToken', result.refresh_token, refreshTokenOptions);
     
-    const refreshCookieOptions = {
-      httpOnly: true,
-      secure: isProduction, // Only secure in production
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      sameSite: isProduction ? 'none' as const : 'lax' as const,
-    };
-    
-    res.cookie('accessToken', result.access_token, cookieOptions);
-    res.cookie('refreshToken', result.refresh_token, refreshCookieOptions);
-    
-    console.log('✅ Cookies set:', {
-      accessToken: 'Set with maxAge ' + cookieOptions.maxAge,
-      refreshToken: 'Set with maxAge ' + refreshCookieOptions.maxAge,
-      secure: cookieOptions.secure,
-      sameSite: cookieOptions.sameSite
-    });
+    console.log('✅ Cookies set with consistent configuration');
     
     // Return user info WITH tokens for backwards compatibility
     return {
@@ -74,22 +56,11 @@ export class AuthController {
     
     const result = await this.authService.refreshToken(refreshToken, userAgent);
     
-    // Set new cookies
-    const isProduction = process.env.NODE_ENV === 'production';
+    // Use consistent cookie configuration for refresh endpoint
+    const cookieOptions = CookieConfigUtil.getRefreshEndpointOptions();
     
-    res.cookie('accessToken', result.access_token, {
-      httpOnly: true,
-      secure: true, // Always secure for cross-origin cookies
-      maxAge: 60 * 60 * 1000, // 1 hour
-      sameSite: 'none' // Allow cross-origin requests
-    });
-    
-    res.cookie('refreshToken', result.refresh_token, {
-      httpOnly: true,
-      secure: true, // Always secure for cross-origin cookies
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      sameSite: 'none' // Allow cross-origin requests
-    });
+    res.cookie('accessToken', result.access_token, cookieOptions.accessToken);
+    res.cookie('refreshToken', result.refresh_token, cookieOptions.refreshToken);
     
     // Return user info without tokens
     return {
