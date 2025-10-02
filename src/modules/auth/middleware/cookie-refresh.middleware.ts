@@ -2,6 +2,7 @@ import { Injectable, NestMiddleware } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Request, Response, NextFunction } from 'express';
 import { AuthService } from '../services/auth.service';
+import { CookieConfigUtil } from '../utils/cookie-config.util';
 
 @Injectable()
 export class CookieRefreshMiddleware implements NestMiddleware {
@@ -37,14 +38,9 @@ export class CookieRefreshMiddleware implements NestMiddleware {
             
             const newAccessToken = this.jwtService.sign(newAccessPayload, { expiresIn: '1h' });
             
-            // Set new access token cookie
-            const isProduction = process.env.NODE_ENV === 'production';
-            res.cookie('accessToken', newAccessToken, {
-              httpOnly: true,
-              secure: isProduction,
-              maxAge: 60 * 60 * 1000, // 1 hour
-              sameSite: 'lax'
-            });
+            // Use consistent cookie configuration
+            const accessTokenOptions = CookieConfigUtil.getAccessTokenOptions();
+            res.cookie('accessToken', newAccessToken, accessTokenOptions);
             
             // Add token to request for immediate use
             req.cookies.accessToken = newAccessToken;
@@ -84,14 +80,9 @@ export class CookieRefreshMiddleware implements NestMiddleware {
                 
                 const newAccessToken = this.jwtService.sign(newAccessPayload, { expiresIn: '1h' });
                 
-                // Set new access token cookie
-                const isProduction = process.env.NODE_ENV === 'production';
-                res.cookie('accessToken', newAccessToken, {
-                  httpOnly: true,
-                  secure: isProduction,
-                  maxAge: 60 * 60 * 1000, // 1 hour
-                  sameSite: 'lax'
-                });
+                // Use consistent cookie configuration
+                const accessTokenOptions = CookieConfigUtil.getAccessTokenOptions();
+                res.cookie('accessToken', newAccessToken, accessTokenOptions);
                 
                 // Update request cookie for immediate use
                 req.cookies.accessToken = newAccessToken;
