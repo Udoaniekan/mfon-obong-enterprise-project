@@ -61,10 +61,11 @@ export class CreateTransactionDto {
   @Type(() => WalkInClientDto)
   walkInClient?: WalkInClientDto;
 
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => TransactionItemDto)
-  items: TransactionItemDto[];
+  items?: TransactionItemDto[];
 
   @IsNotEmpty()
   @IsEnum(TransactionType)
@@ -140,10 +141,11 @@ export class CalculateTransactionDto {
   @Type(() => WalkInClientDto)
   walkInClient?: WalkInClientDto;
 
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => TransactionItemDto)
-  items: TransactionItemDto[];
+  items?: TransactionItemDto[];
 
   @IsNotEmpty()
   @IsEnum(TransactionType)
@@ -153,6 +155,11 @@ export class CalculateTransactionDto {
   @IsNumber()
   @Min(0)
   discount?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  amountPaid?: number;
 
   @IsMongoId()
   branchId: string;
