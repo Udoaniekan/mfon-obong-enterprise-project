@@ -363,7 +363,7 @@ export class TransactionsService {
 
     return this.transactionModel
       .find(filter)
-      .populate('clientId', 'name phone')
+      .populate('clientId', 'name phone balance')
       .populate('userId', 'name')
       .sort({ date: -1 })
       .exec();
@@ -372,7 +372,7 @@ export class TransactionsService {
   async findById(id: string): Promise<Transaction> {
     const transaction = await this.transactionModel
       .findById(id)
-      .populate('clientId', 'name phone')
+      .populate('clientId', 'name phone balance')
       .populate('userId', 'name');
 
     if (!transaction) {
@@ -385,7 +385,7 @@ export class TransactionsService {
   async findByBranchId(branchId: string): Promise<Transaction[]> {
     const transactions = await this.transactionModel
       .find({ branchId })
-      .populate('clientId', 'name phone')
+      .populate('clientId', 'name phone balance')
       .populate('userId', 'name')
       .sort({ date: -1 });
 
