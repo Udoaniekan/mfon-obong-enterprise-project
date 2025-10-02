@@ -76,40 +76,56 @@ export class TransactionsService {
       );
     }
 
-    // Process items and calculate totals
+    // Process items and calculate totals (skip for DEPOSIT transactions)
     let subtotal = 0;
-    const processedItems = await Promise.all(
-      createTransactionDto.items.map(async (item) => {
-        const product = await this.productsService.findById(item.productId);
+    let processedItems: any[] = [];
+    
+    if (createTransactionDto.type === 'DEPOSIT') {
+      // For deposits, use amountPaid as the total, no items needed
+      if (!createTransactionDto.amountPaid || createTransactionDto.amountPaid <= 0) {
+        throw new BadRequestException('Deposit amount must be greater than 0');
+      }
+      subtotal = createTransactionDto.amountPaid;
+      processedItems = []; // No items for deposits
+    } else {
+      // For PURCHASE and PICKUP, process items normally
+      if (!createTransactionDto.items || createTransactionDto.items.length === 0) {
+        throw new BadRequestException('Items are required for PURCHASE and PICKUP transactions');
+      }
+      
+      processedItems = await Promise.all(
+        createTransactionDto.items.map(async (item) => {
+          const product = await this.productsService.findById(item.productId);
 
-        // Validate unit matches product category
-        if (item.unit !== product.unit) {
-          throw new BadRequestException(
-            `Invalid unit ${item.unit} for product ${product.name}. This product only accepts ${product.unit}`,
-          );
-        }
+          // Validate unit matches product category
+          if (item.unit !== product.unit) {
+            throw new BadRequestException(
+              `Invalid unit ${item.unit} for product ${product.name}. This product only accepts ${product.unit}`,
+            );
+          }
 
-        // Validate stock availability
-        if (product.stock < item.quantity) {
-          throw new BadRequestException(
-            `Insufficient stock for ${product.name}. Available: ${product.stock} ${product.unit}`,
-          );
-        } // Calculate price
-        const price = product.unitPrice * item.quantity;
-        const itemSubtotal = price - (item.discount || 0);
-        subtotal += itemSubtotal;
+          // Validate stock availability
+          if (product.stock < item.quantity) {
+            throw new BadRequestException(
+              `Insufficient stock for ${product.name}. Available: ${product.stock} ${product.unit}`,
+            );
+          } // Calculate price
+          const price = product.unitPrice * item.quantity;
+          const itemSubtotal = price - (item.discount || 0);
+          subtotal += itemSubtotal;
 
-        return {
-          productId: product._id,
-          productName: product.name,
-          quantity: item.quantity,
-          unit: item.unit,
-          unitPrice: price / item.quantity,
-          discount: item.discount || 0,
-          subtotal: itemSubtotal,
-        };
-      }),
-    );
+          return {
+            productId: product._id,
+            productName: product.name,
+            quantity: item.quantity,
+            unit: item.unit,
+            unitPrice: price / item.quantity,
+            discount: item.discount || 0,
+            subtotal: itemSubtotal,
+          };
+        }),
+      );
+    }
 
     const total = subtotal - (createTransactionDto.discount || 0);
     const amountPaid = createTransactionDto.amountPaid || 0;
@@ -120,32 +136,38 @@ export class TransactionsService {
       // Registered client
       const type = createTransactionDto.type || 'PURCHASE';
       if (type === 'PICKUP') {
+        // PICKUP: Full flexibility - any payment amount allowed
+        status = 'COMPLETED';
+      } else if (type === 'DEPOSIT') {
+        // Deposit transaction - always completed, no items validation needed
         status = 'COMPLETED';
       } else if (type === 'PURCHASE') {
-        // Fetch client balance
+        // PURCHASE: Client can pay full amount OR (amountPaid + balance) must equal total
         const client = await this.clientsService.findById(
           createTransactionDto.clientId,
         );
         const clientBalance = client.balance || 0;
-        const requiredPayment = total - (clientBalance > 0 ? clientBalance : 0);
-        if (requiredPayment < 0) {
-          // Client has more than enough balance, no payment needed
-          if (amountPaid !== 0) {
-            throw new BadRequestException(
-              `No payment required. Client already has enough balance.`,
-            );
-          }
+        
+        if (amountPaid === total) {
+          // Client paid full amount - balance remains untouched
+          status = 'COMPLETED';
+        } else if (amountPaid + clientBalance === total) {
+          // Client paid partial + using balance to complete
+          status = 'COMPLETED';
         } else {
-          if (amountPaid !== requiredPayment) {
-            throw new BadRequestException(
-              `Insufficient payment. Client must pay exactly ${requiredPayment} to complete this purchase. Current balance: ${clientBalance}`,
-            );
-          }
+          throw new BadRequestException(
+            `Invalid payment amount. Either pay the full amount (${total}) or pay ${total - clientBalance} to use your balance of ${clientBalance}.`
+          );
         }
-        status = 'COMPLETED';
       }
     } else {
-      // Walk-in client - STRICT payment validation
+      // Walk-in client - STRICT payment validation (not allowed for deposits)
+      if (createTransactionDto.type === 'DEPOSIT') {
+        throw new BadRequestException(
+          'Deposit transactions are only allowed for registered clients.'
+        );
+      }
+      
       if (amountPaid < total ) {
         throw new BadRequestException(
           `Insufficient payment for walk-in client. Required: ${total}, Provided: ${amountPaid}. Walk-in clients must pay the full amount upfront.`
@@ -219,52 +241,20 @@ export class TransactionsService {
     }
 
     // After successful save, perform side-effects (stock updates and client ledger)
-    // Update stock levels (and be able to revert on failure)
+    // Update stock levels (and be able to revert on failure) - Skip for DEPOSIT transactions
     const updatedProducts: Array<{ productId: string; quantity: number; unit: string }> = [];
-    try {
-      for (const item of transaction.items) {
-        await this.productsService.updateStock(item.productId.toString(), {
-          quantity: item.quantity,
-          unit: item.unit,
-          operation: StockOperation.SUBTRACT,
-        });
-        updatedProducts.push({ productId: item.productId.toString(), quantity: item.quantity, unit: item.unit });
-      }
-    } catch (stockErr) {
-      // Attempt to revert any already-updated stock
-      for (const upd of updatedProducts) {
-        try {
-          await this.productsService.updateStock(upd.productId.toString(), {
-            quantity: upd.quantity,
-            unit: upd.unit,
-            operation: StockOperation.ADD,
+    if (createTransactionDto.type !== 'DEPOSIT') {
+      try {
+        for (const item of transaction.items) {
+          await this.productsService.updateStock(item.productId.toString(), {
+            quantity: item.quantity,
+            unit: item.unit,
+            operation: StockOperation.SUBTRACT,
           });
-        } catch (revertErr) {
-          console.error('Failed to revert stock for', upd.productId, revertErr);
+          updatedProducts.push({ productId: item.productId.toString(), quantity: item.quantity, unit: item.unit });
         }
-      }
-      // Remove saved transaction to avoid inconsistent state
-      try {
-        await this.transactionModel.deleteOne({ _id: savedTransaction._id });
-      } catch (delErr) {
-        console.error('Failed to delete transaction after stock update failure', delErr);
-      }
-      throw new BadRequestException('Failed to update stock. Transaction aborted.');
-    }
-
-    // Update client balance only for registered clients
-    if (clientId) {
-      const ledgerType = createTransactionDto.type === 'PICKUP' ? 'PICKUP' : 'PURCHASE';
-      try {
-        await this.clientsService.addTransaction(clientId.toString(), {
-          type: ledgerType,
-          amount: total,
-          description: `Invoice #${transaction.invoiceNumber}`,
-          reference: transaction._id.toString(),
-          date: transaction.date || new Date(),
-        });
-      } catch (ledgerErr) {
-        // Attempt to revert stock
+      } catch (stockErr) {
+        // Attempt to revert any already-updated stock
         for (const upd of updatedProducts) {
           try {
             await this.productsService.updateStock(upd.productId.toString(), {
@@ -273,7 +263,88 @@ export class TransactionsService {
               operation: StockOperation.ADD,
             });
           } catch (revertErr) {
-            console.error('Failed to revert stock after ledger failure for', upd.productId, revertErr);
+            console.error('Failed to revert stock for', upd.productId, revertErr);
+          }
+        }
+        // Remove saved transaction to avoid inconsistent state
+        try {
+          await this.transactionModel.deleteOne({ _id: savedTransaction._id });
+        } catch (delErr) {
+          console.error('Failed to delete transaction after stock update failure', delErr);
+        }
+        throw new BadRequestException('Failed to update stock. Transaction aborted.');
+      }
+    }
+
+    // Update client balance only for registered clients
+    if (clientId) {
+      let ledgerType: 'DEPOSIT' | 'PICKUP' | 'PURCHASE';
+      if (createTransactionDto.type === 'PICKUP') {
+        ledgerType = 'PICKUP';
+      } else if (createTransactionDto.type === 'DEPOSIT') {
+        ledgerType = 'DEPOSIT';
+      } else {
+        ledgerType = 'PURCHASE';
+      }
+      
+      try {
+        let ledgerAmount = total;
+        let ledgerDescription = `Invoice #${transaction.invoiceNumber}`;
+        
+        // For PURCHASE transactions, determine if balance was used
+        if (createTransactionDto.type === 'PURCHASE') {
+          const client = await this.clientsService.findById(clientId.toString());
+          const clientBalance = client.balance || 0;
+          
+          if (amountPaid === total) {
+            // Client paid full amount - no balance used
+            ledgerAmount = total;
+          } else if (amountPaid + clientBalance === total) {
+            // Client used balance + payment - only charge the balance portion
+            ledgerAmount = total;
+            ledgerDescription += ` (Used ${clientBalance} from balance + ${amountPaid} payment)`;
+          }
+        } else if (createTransactionDto.type === 'PICKUP') {
+          // PICKUP: Handle flexible payment - excess becomes credit
+          ledgerAmount = total;
+          if (amountPaid > total) {
+            const excess = amountPaid - total;
+            ledgerDescription += ` (Overpaid by ${excess} - added as credit)`;
+            
+            // Add the excess as a separate credit entry
+            await this.clientsService.addTransaction(clientId.toString(), {
+              type: 'DEPOSIT',
+              amount: excess,
+              description: `Credit from overpayment on Invoice #${transaction.invoiceNumber}`,
+              reference: transaction._id.toString(),
+              date: transaction.date || new Date(),
+            });
+          } else if (amountPaid < total) {
+            const shortfall = total - amountPaid;
+            ledgerDescription += ` (Underpaid by ${shortfall} - added to balance)`;
+          }
+        }
+        
+        await this.clientsService.addTransaction(clientId.toString(), {
+          type: ledgerType,
+          amount: ledgerAmount,
+          description: ledgerDescription,
+          reference: transaction._id.toString(),
+          date: transaction.date || new Date(),
+        });
+      } catch (ledgerErr) {
+        // Attempt to revert stock only if it was updated
+        if (createTransactionDto.type !== 'DEPOSIT') {
+          for (const upd of updatedProducts) {
+            try {
+              await this.productsService.updateStock(upd.productId.toString(), {
+                quantity: upd.quantity,
+                unit: upd.unit,
+                operation: StockOperation.ADD,
+              });
+            } catch (revertErr) {
+              console.error('Failed to revert stock after ledger failure for', upd.productId, revertErr);
+            }
           }
         }
         // Delete the saved transaction
@@ -593,42 +664,58 @@ export class TransactionsService {
       );
     }
 
-    // Process items and calculate totals
+    // Process items and calculate totals (skip for DEPOSIT transactions)
     let subtotal = 0;
-    const processedItems = await Promise.all(
-      calculateTransactionDto.items.map(async (item) => {
-        const product = await this.productsService.findById(item.productId);
+    let processedItems: any[] = [];
+    
+    if (calculateTransactionDto.type === 'DEPOSIT') {
+      // For deposits, use amountPaid as the total, no items needed
+      if (!calculateTransactionDto.amountPaid || calculateTransactionDto.amountPaid <= 0) {
+        throw new BadRequestException('Deposit amount must be greater than 0');
+      }
+      subtotal = calculateTransactionDto.amountPaid;
+      processedItems = []; // No items for deposits
+    } else {
+      // For PURCHASE and PICKUP, process items normally
+      if (!calculateTransactionDto.items || calculateTransactionDto.items.length === 0) {
+        throw new BadRequestException('Items are required for PURCHASE and PICKUP transactions');
+      }
+      
+      processedItems = await Promise.all(
+        calculateTransactionDto.items.map(async (item) => {
+          const product = await this.productsService.findById(item.productId);
 
-        // Validate unit matches product category
-        if (item.unit !== product.unit) {
-          throw new BadRequestException(
-            `Invalid unit ${item.unit} for product ${product.name}. This product only accepts ${product.unit}`,
-          );
-        }
+          // Validate unit matches product category
+          if (item.unit !== product.unit) {
+            throw new BadRequestException(
+              `Invalid unit ${item.unit} for product ${product.name}. This product only accepts ${product.unit}`,
+            );
+          }
 
-        // Validate stock availability
-        if (product.stock < item.quantity) {
-          throw new BadRequestException(
-            `Insufficient stock for ${product.name}. Available: ${product.stock} ${product.unit}`,
-          );
-        }
+          // Validate stock availability
+          if (product.stock < item.quantity) {
+            throw new BadRequestException(
+              `Insufficient stock for ${product.name}. Available: ${product.stock} ${product.unit}`,
+            );
+          }
 
-        // Calculate price
-        const price = product.unitPrice * item.quantity;
-        const itemSubtotal = price - (item.discount || 0);
-        subtotal += itemSubtotal;
+          // Calculate price
+          const price = product.unitPrice * item.quantity;
+          const itemSubtotal = price - (item.discount || 0);
+          subtotal += itemSubtotal;
 
-        return {
-          productId: product._id,
-          productName: product.name,
-          quantity: item.quantity,
-          unit: item.unit,
-          unitPrice: price / item.quantity,
-          discount: item.discount || 0,
-          subtotal: itemSubtotal,
-        };
-      }),
-    );
+          return {
+            productId: product._id,
+            productName: product.name,
+            quantity: item.quantity,
+            unit: item.unit,
+            unitPrice: price / item.quantity,
+            discount: item.discount || 0,
+            subtotal: itemSubtotal,
+          };
+        }),
+      );
+    }
 
     const total = subtotal - (calculateTransactionDto.discount || 0);
 
@@ -647,21 +734,29 @@ export class TransactionsService {
     if (calculateTransactionDto.clientId) {
       // Registered client
       if (calculateTransactionDto.type === 'PICKUP') {
-        requiredPayment = 0;
-        paymentDetails.message = 'No payment required for pickup transactions';
+        // PICKUP: Full payment flexibility
+        requiredPayment = 0; // No required payment
+        paymentDetails.message = `PICKUP: You can pay any amount (0 to ${total} or more). Excess payment becomes account credit.`;
+      } else if (calculateTransactionDto.type === 'DEPOSIT') {
+        requiredPayment = total;
+        paymentDetails.message = `Deposit amount: ${total}`;
       } else if (calculateTransactionDto.type === 'PURCHASE') {
-        requiredPayment = total - (clientBalance > 0 ? clientBalance : 0);
-        paymentDetails.canUseCreditBalance = clientBalance > 0;
-
-        if (requiredPayment <= 0) {
-          paymentDetails.message = `No payment required. Client has sufficient balance (${clientBalance})`;
-          requiredPayment = 0;
+        // PURCHASE: Client can pay full amount OR (amountPaid + balance) must equal total
+        if (clientBalance >= total) {
+          paymentDetails.message = `You can pay ${total} (full amount) or pay 0 to use your balance of ${clientBalance}`;
+          paymentDetails.canUseCreditBalance = true;
         } else {
-          paymentDetails.message = `Client must pay ${requiredPayment}. Current balance: ${clientBalance}`;
+          const balanceOption = total - clientBalance;
+          paymentDetails.message = `You can pay ${total} (full amount) or pay ${balanceOption} to use your balance of ${clientBalance}`;
+          paymentDetails.canUseCreditBalance = clientBalance > 0;
         }
+        requiredPayment = total; // Show full amount as primary option
       }
     } else {
-      // Walk-in client
+      // Walk-in client - not allowed for deposits
+      if (calculateTransactionDto.type === 'DEPOSIT') {
+        throw new BadRequestException('Deposit transactions are only allowed for registered clients.');
+      }
       paymentDetails.message = `Walk-in client must pay full amount: ${total}`;
     }
 
@@ -717,7 +812,7 @@ export class TransactionsService {
   // Revenue Analytics Methods
   async getTotalRevenue(branchId?: string, startDate?: Date, endDate?: Date) {
     const filter: any = {
-      type: { $in: ['PURCHASE', 'PICKUP'] },
+      type: { $in: ['PURCHASE', 'PICKUP', 'DEPOSIT'] },
       status: { $ne: 'CANCELLED' }
     };
 
@@ -775,7 +870,7 @@ export class TransactionsService {
     }
 
     const filter: any = {
-      type: { $in: ['PURCHASE', 'PICKUP'] },
+      type: { $in: ['PURCHASE', 'PICKUP', 'DEPOSIT'] },
       status: { $ne: 'CANCELLED' },
       date: { $gte: dateRange.start, $lt: dateRange.end }
     };
@@ -832,7 +927,7 @@ export class TransactionsService {
     }
 
       const filter: any = {
-      type: { $in: ['PURCHASE', 'PICKUP'] },
+      type: { $in: ['PURCHASE', 'PICKUP', 'DEPOSIT'] },
       status: { $ne: 'CANCELLED' },
       date: { $gte: dateRange.start, $lt: dateRange.end }
     };
@@ -886,7 +981,7 @@ export class TransactionsService {
     }
 
     const filter: any = {
-      type: { $in: ['PURCHASE', 'PICKUP'] },
+      type: { $in: ['PURCHASE', 'PICKUP', 'DEPOSIT'] },
       status: { $ne: 'CANCELLED' },
       date: { $gte: dateRange.start, $lt: dateRange.end }
     };
