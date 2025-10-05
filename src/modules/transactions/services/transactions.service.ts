@@ -297,18 +297,20 @@ export class TransactionsService {
           const clientBalance = client.balance || 0;
           
           if (amountPaid === total) {
-            // Client paid full amount - no balance used
-            ledgerAmount = total;
+            // Client paid full amount - no balance used, don't deduct anything from balance
+            ledgerAmount = 0;
+            ledgerDescription = `Invoice #${transaction.invoiceNumber} (Paid in full - balance untouched)`;
           } else if (amountPaid + clientBalance === total) {
             // Client used balance + payment - only charge the balance portion
-            ledgerAmount = total;
-            ledgerDescription += ` (Used ${clientBalance} from balance + ${amountPaid} payment)`;
+            ledgerAmount = total - amountPaid;
+            ledgerDescription += ` (Used ${total - amountPaid} from balance + ${amountPaid} payment)`;
           }
         } else if (createTransactionDto.type === 'PICKUP') {
-          // PICKUP: Handle flexible payment - excess becomes credit
-          ledgerAmount = total;
+          // PICKUP: Handle flexible payment - calculate actual balance impact
+          ledgerAmount = total - amountPaid;
           if (amountPaid > total) {
             const excess = amountPaid - total;
+            ledgerAmount = 0; // No debt since overpaid
             ledgerDescription += ` (Overpaid by ${excess} - added as credit)`;
             
             // Add the excess as a separate credit entry
@@ -322,6 +324,10 @@ export class TransactionsService {
           } else if (amountPaid < total) {
             const shortfall = total - amountPaid;
             ledgerDescription += ` (Underpaid by ${shortfall} - added to balance)`;
+          } else {
+            // Paid exactly - no balance change
+            ledgerAmount = 0;
+            ledgerDescription += ` (Paid exactly - no balance change)`;
           }
         }
         
