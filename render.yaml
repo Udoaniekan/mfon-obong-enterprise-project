@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: mfon-obong-enterprise-backend
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: npm run start:prod
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        generateValue: true
+    healthCheckPath: /api/health
+    autoDeploy: true
+    # Memory optimization
+    plan: starter # Use paid plan for more memory
+    # Or use these environment variables for memory limits
+    # NODE_OPTIONS: --max-old-space-size=512
