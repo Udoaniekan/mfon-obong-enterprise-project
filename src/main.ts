@@ -23,6 +23,7 @@ async function bootstrap() {
       // Current frontend deployments
       'https://mfon-obong-enterprises.pipeops.net',
       'https://frontend-tawny-pi-78.vercel.app',
+      'https://frontend-kkue8if0i-james-ndopnnoabasis-projects.vercel.app',
       
       // Production domains
       'https://mfonobongenterprise.com',
