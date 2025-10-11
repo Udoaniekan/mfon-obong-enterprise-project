@@ -134,29 +134,41 @@ export class TransactionsService {
     let status = 'PENDING';
     if (clientId) {
       // Registered client
+      const client = await this.clientsService.findById(
+        createTransactionDto.clientId,
+      );
+      const clientBalance = client.balance || 0;
       const type = createTransactionDto.type || 'PURCHASE';
-      if (type === 'PICKUP') {
-        // PICKUP: Full flexibility - any payment amount allowed
-        status = 'COMPLETED';
-      } else if (type === 'DEPOSIT') {
+
+      if (type === 'DEPOSIT') {
         // Deposit transaction - always completed, no items validation needed
         status = 'COMPLETED';
       } else if (type === 'PURCHASE') {
-        // PURCHASE: Client can pay full amount OR (amountPaid + balance) must equal total
-        const client = await this.clientsService.findById(
-          createTransactionDto.clientId,
-        );
-        const clientBalance = client.balance || 0;
-        
-        if (amountPaid === total) {
-          // Client paid full amount - balance remains untouched
-          status = 'COMPLETED';
-        } else if (amountPaid + clientBalance === total) {
-          // Client paid partial + using balance to complete
+        // PURCHASE: Any transaction that will NOT result in debt
+        // (amountPaid + balance) >= total
+        const totalAvailable = amountPaid + clientBalance;
+
+        if (totalAvailable >= total) {
+          // Payment is sufficient - no debt created
           status = 'COMPLETED';
         } else {
+          // Would create debt - reject
           throw new BadRequestException(
-            `Invalid payment amount. Either pay the full amount (${total}) or pay ${total - clientBalance} to use your balance of ${clientBalance}.`
+            `Insufficient funds for PURCHASE. Total: ${total}, Amount Paid: ${amountPaid}, Balance: ${clientBalance}. You need at least ${total - clientBalance - amountPaid} more to complete this purchase without going into debt.`
+          );
+        }
+      } else if (type === 'PICKUP') {
+        // PICKUP: Any transaction that WILL result in debt
+        // (amountPaid + balance) < total
+        const totalAvailable = amountPaid + clientBalance;
+
+        if (totalAvailable < total) {
+          // Will create debt - this is valid for PICKUP
+          status = 'COMPLETED';
+        } else {
+          // Would not create debt - should be PURCHASE instead
+          throw new BadRequestException(
+            `This transaction should be a PURCHASE, not a PICKUP. The payment (${amountPaid}) + balance (${clientBalance}) covers the total (${total}). PICKUP is only for transactions that result in debt.`
           );
         }
       }
@@ -288,47 +300,43 @@ export class TransactionsService {
       }
       
       try {
-        let ledgerAmount = total;
+        let ledgerAmount = 0;
         let ledgerDescription = `Invoice #${transaction.invoiceNumber}`;
-        
-        // For PURCHASE transactions, determine if balance was used
+        const client = await this.clientsService.findById(clientId.toString());
+        const clientBalance = client.balance || 0;
+
+        // For PURCHASE transactions: (amountPaid + balance) >= total
         if (createTransactionDto.type === 'PURCHASE') {
-          const client = await this.clientsService.findById(clientId.toString());
-          const clientBalance = client.balance || 0;
-          
-          if (amountPaid === total) {
-            // Client paid full amount - no balance used, don't deduct anything from balance
-            ledgerAmount = 0;
-            ledgerDescription = `Invoice #${transaction.invoiceNumber} (Paid in full - balance untouched)`;
-          } else if (amountPaid + clientBalance === total) {
-            // Client used balance + payment - only charge the balance portion
-            ledgerAmount = total - amountPaid;
-            ledgerDescription += ` (Used ${total - amountPaid} from balance + ${amountPaid} payment)`;
+          const totalAvailable = amountPaid + clientBalance;
+
+          if (amountPaid >= total) {
+            // Paid full or more - balance untouched
+            if (amountPaid > total) {
+              // Overpaid - add excess as credit
+              const excess = amountPaid - total;
+              ledgerAmount = -excess; // Negative means adding credit
+              ledgerDescription += ` (Overpaid by ${excess} - added as credit)`;
+            } else {
+              // Paid exactly - no balance change
+              ledgerAmount = 0;
+              ledgerDescription += ` (Paid in full - balance untouched)`;
+            }
+          } else {
+            // Used balance to complete purchase
+            // Deduct only what's needed from balance
+            const neededFromBalance = total - amountPaid;
+            ledgerAmount = neededFromBalance; // Positive means deducting from balance
+            ledgerDescription += ` (Used ${neededFromBalance} from balance + ${amountPaid} payment)`;
           }
         } else if (createTransactionDto.type === 'PICKUP') {
-          // PICKUP: Handle flexible payment - calculate actual balance impact
-          ledgerAmount = total - amountPaid;
-          if (amountPaid > total) {
-            const excess = amountPaid - total;
-            ledgerAmount = 0; // No debt since overpaid
-            ledgerDescription += ` (Overpaid by ${excess} - added as credit)`;
-            
-            // Add the excess as a separate credit entry
-            await this.clientsService.addTransaction(clientId.toString(), {
-              type: 'DEPOSIT',
-              amount: excess,
-              description: `Credit from overpayment on Invoice #${transaction.invoiceNumber}`,
-              reference: transaction._id.toString(),
-              date: transaction.date || new Date(),
-            });
-          } else if (amountPaid < total) {
-            const shortfall = total - amountPaid;
-            ledgerDescription += ` (Underpaid by ${shortfall} - added to balance)`;
-          } else {
-            // Paid exactly - no balance change
-            ledgerAmount = 0;
-            ledgerDescription += ` (Paid exactly - no balance change)`;
-          }
+          // PICKUP: (amountPaid + balance) < total - creates debt
+          // First, use all available balance, then create debt
+          const totalAvailable = amountPaid + clientBalance;
+          const debt = total - totalAvailable;
+
+          // Deduct all balance and add the debt
+          ledgerAmount = total - amountPaid; // This will use balance and create debt
+          ledgerDescription += ` (Used ${clientBalance > 0 ? clientBalance : 0} from balance, paid ${amountPaid}, debt ${debt})`;
         }
         
         await this.clientsService.addTransaction(clientId.toString(), {
@@ -739,24 +747,26 @@ export class TransactionsService {
 
     if (calculateTransactionDto.clientId) {
       // Registered client
-      if (calculateTransactionDto.type === 'PICKUP') {
-        // PICKUP: Full payment flexibility
-        requiredPayment = 0; // No required payment
-        paymentDetails.message = `PICKUP: You can pay any amount (0 to ${total} or more). Excess payment becomes account credit.`;
-      } else if (calculateTransactionDto.type === 'DEPOSIT') {
+      if (calculateTransactionDto.type === 'DEPOSIT') {
         requiredPayment = total;
         paymentDetails.message = `Deposit amount: ${total}`;
       } else if (calculateTransactionDto.type === 'PURCHASE') {
-        // PURCHASE: Client can pay full amount OR (amountPaid + balance) must equal total
+        // PURCHASE: Any payment where (amountPaid + balance) >= total
+        // Minimum payment needed = total - balance (or 0 if balance covers all)
+        const minimumPayment = Math.max(0, total - clientBalance);
+        requiredPayment = minimumPayment;
+
         if (clientBalance >= total) {
-          paymentDetails.message = `You can pay ${total} (full amount) or pay 0 to use your balance of ${clientBalance}`;
-          paymentDetails.canUseCreditBalance = true;
+          paymentDetails.message = `PURCHASE: You can pay 0 (balance ${clientBalance} covers all) up to any amount. Excess becomes credit.`;
         } else {
-          const balanceOption = total - clientBalance;
-          paymentDetails.message = `You can pay ${total} (full amount) or pay ${balanceOption} to use your balance of ${clientBalance}`;
-          paymentDetails.canUseCreditBalance = clientBalance > 0;
+          paymentDetails.message = `PURCHASE: Minimum payment ${minimumPayment} (to avoid debt). You can pay more, excess becomes credit. Current balance: ${clientBalance}`;
         }
-        requiredPayment = total; // Show full amount as primary option
+        paymentDetails.canUseCreditBalance = true;
+      } else if (calculateTransactionDto.type === 'PICKUP') {
+        // PICKUP: Only for transactions that will create debt
+        // Any payment where (amountPaid + balance) < total
+        requiredPayment = 0; // No minimum - can pay 0 if going into debt
+        paymentDetails.message = `PICKUP: Pay any amount less than ${total - clientBalance} to create debt. Balance: ${clientBalance}`;
       }
     } else {
       // Walk-in client - not allowed for deposits
