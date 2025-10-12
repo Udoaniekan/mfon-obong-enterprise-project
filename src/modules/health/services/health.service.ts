@@ -105,17 +105,28 @@ export class HealthService {
     percentage: number;
   } {
     const memoryUsage = process.memoryUsage();
-    const totalMemory = memoryUsage.heapTotal;
-    const usedMemory = memoryUsage.heapUsed;
-    const percentage = Math.round((usedMemory / totalMemory) * 100);
+
+    // Get system total memory (Node.js max old space size or OS total)
+    // Default to 512MB for Render free tier, but this will work on any platform
+    const maxOldSpaceSize = parseInt(process.env.NODE_OPTIONS?.match(/--max-old-space-size=(\d+)/)?.[1] || '512');
+    const totalSystemMemory = maxOldSpaceSize * 1024 * 1024; // Convert MB to bytes
+
+    // Use RSS (Resident Set Size) for actual memory consumption check
+    // RSS includes heap, code, and stack - the real memory footprint
+    const usedMemory = memoryUsage.rss;
+    const percentage = Math.round((usedMemory / totalSystemMemory) * 100);
 
     let status: 'normal' | 'high' | 'critical' = 'normal';
 
-    if (percentage > 90) {
+    // Production-standard thresholds based on actual RSS memory usage
+    if (percentage > 85) {
+      // > 85% is critical - approaching OOM
       status = 'critical';
-    } else if (percentage > 75) {
+    } else if (percentage > 70) {
+      // > 70% is high but acceptable
       status = 'high';
     }
+    // Below 70% is normal and healthy
 
     return {
       status,
