@@ -9,6 +9,7 @@ import { Model } from 'mongoose';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../../users/services/users.service';
 import { Otp } from '../schemas/otp.schema';
+import { RefreshToken } from '../schemas/refresh-token.schema';
 import { generateOTP, getOTPExpiry } from '../utils/otp.util';
 import { sendOTPEmail } from '../utils/mailer.util';
 import { SystemActivityLogService } from '../../system-activity-logs/services/system-activity-log.service';
@@ -18,12 +19,12 @@ import * as bcrypt from 'bcrypt';
 @Injectable()
 export class AuthService {
   private blacklistedTokens = new Set<string>(); // In-memory token blacklist
-  private refreshTokens = new Map<string, { userId: string; email: string; expiresAt: number }>(); // In-memory refresh token storage
 
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     @InjectModel(Otp.name) private readonly otpModel: Model<Otp>,
+    @InjectModel(RefreshToken.name) private readonly refreshTokenModel: Model<RefreshToken>,
     private readonly systemActivityLogService: SystemActivityLogService,
   ) {}
   // MAINTAINER requests OTP to their email for password reset
@@ -165,7 +166,7 @@ export class AuthService {
       };
 
       const access_token = this.jwtService.sign(payload, { expiresIn: '1h' });
-      
+
       // Generate refresh token
       const refreshPayload = {
         email: user.email,
@@ -173,13 +174,15 @@ export class AuthService {
         type: 'refresh'
       };
       const refresh_token = this.jwtService.sign(refreshPayload, { expiresIn: '7d' });
-      
-      // Store refresh token in memory
-      const expiresAt = Date.now() + (7 * 24 * 60 * 60 * 1000); // 7 days from now
-      this.refreshTokens.set(refresh_token, {
+
+      // Store refresh token in database (persisted across restarts)
+      const expiresAt = new Date(Date.now() + (7 * 24 * 60 * 60 * 1000)); // 7 days from now
+      await this.refreshTokenModel.create({
+        token: refresh_token,
         userId: refreshPayload.sub,
         email: refreshPayload.email,
-        expiresAt
+        expiresAt,
+        userAgent: extractDeviceInfo(userAgent || ''),
       });
 
       // Log successful login activity
@@ -249,29 +252,36 @@ export class AuthService {
     return this.blacklistedTokens.has(token);
   }
 
-  getRefreshTokenData(refreshToken: string) {
-    return this.refreshTokens.get(refreshToken);
+  async getRefreshTokenData(refreshToken: string) {
+    return await this.refreshTokenModel.findOne({ token: refreshToken, revoked: false });
   }
 
-  invalidateRefreshToken(refreshToken: string) {
-    this.refreshTokens.delete(refreshToken);
+  async invalidateRefreshToken(refreshToken: string) {
+    await this.refreshTokenModel.updateOne(
+      { token: refreshToken },
+      { revoked: true }
+    );
   }
 
   // Refresh Token Methods
   async refreshToken(refreshToken: string, userAgent?: string) {
     try {
-      // Clean up expired refresh tokens first
-      this.cleanupExpiredRefreshTokens();
+      // Check if refresh token exists in database
+      const tokenDoc = await this.refreshTokenModel.findOne({
+        token: refreshToken,
+        revoked: false,
+      });
 
-      // Check if refresh token exists in memory
-      const tokenData = this.refreshTokens.get(refreshToken);
-      if (!tokenData) {
+      if (!tokenDoc) {
         throw new UnauthorizedException('Invalid refresh token');
       }
 
       // Check if token is expired
-      if (Date.now() > tokenData.expiresAt) {
-        this.refreshTokens.delete(refreshToken);
+      if (new Date() > tokenDoc.expiresAt) {
+        await this.refreshTokenModel.updateOne(
+          { _id: tokenDoc._id },
+          { revoked: true }
+        );
         throw new UnauthorizedException('Refresh token expired');
       }
 
@@ -280,7 +290,10 @@ export class AuthService {
       try {
         decodedToken = this.jwtService.verify(refreshToken);
       } catch (error) {
-        this.refreshTokens.delete(refreshToken);
+        await this.refreshTokenModel.updateOne(
+          { _id: tokenDoc._id },
+          { revoked: true }
+        );
         throw new UnauthorizedException('Invalid refresh token signature');
       }
 
@@ -290,9 +303,12 @@ export class AuthService {
       }
 
       // Get fresh user data
-      const user = await this.usersService.findByEmail(tokenData.email);
+      const user = await this.usersService.findByEmail(tokenDoc.email);
       if (!user || !user.isActive) {
-        this.refreshTokens.delete(refreshToken);
+        await this.refreshTokenModel.updateOne(
+          { _id: tokenDoc._id },
+          { revoked: true }
+        );
         throw new UnauthorizedException('User not found or inactive');
       }
 
@@ -315,13 +331,19 @@ export class AuthService {
       };
       const new_refresh_token = this.jwtService.sign(newRefreshPayload, { expiresIn: '7d' });
 
-      // Remove old refresh token and store new one
-      this.refreshTokens.delete(refreshToken);
-      const newExpiresAt = Date.now() + (7 * 24 * 60 * 60 * 1000);
-      this.refreshTokens.set(new_refresh_token, {
+      // Revoke old refresh token and store new one in database
+      await this.refreshTokenModel.updateOne(
+        { _id: tokenDoc._id },
+        { revoked: true }
+      );
+
+      const newExpiresAt = new Date(Date.now() + (7 * 24 * 60 * 60 * 1000));
+      await this.refreshTokenModel.create({
+        token: new_refresh_token,
         userId: newRefreshPayload.sub,
         email: newRefreshPayload.email,
-        expiresAt: newExpiresAt
+        expiresAt: newExpiresAt,
+        userAgent: extractDeviceInfo(userAgent || ''),
       });
 
       // Log token refresh activity
@@ -357,33 +379,32 @@ export class AuthService {
     }
   }
 
-  // Clean up expired refresh tokens from memory
-  private cleanupExpiredRefreshTokens(): void {
-    const now = Date.now();
-    for (const [token, data] of this.refreshTokens.entries()) {
-      if (now > data.expiresAt) {
-        this.refreshTokens.delete(token);
-      }
-    }
-  }
-
   // Get refresh token stats (for monitoring/debugging)
-  getRefreshTokenStats(): { total: number; expired: number } {
-    const now = Date.now();
-    let expired = 0;
-    const total = this.refreshTokens.size;
+  async getRefreshTokenStats(): Promise<{ total: number; expired: number; active: number }> {
+    const now = new Date();
+    const total = await this.refreshTokenModel.countDocuments({ revoked: false });
+    const expired = await this.refreshTokenModel.countDocuments({
+      revoked: false,
+      expiresAt: { $lt: now }
+    });
+    const active = total - expired;
 
-    for (const [token, data] of this.refreshTokens.entries()) {
-      if (now > data.expiresAt) {
-        expired++;
-      }
-    }
-
-    return { total, expired };
+    return { total, expired, active };
   }
 
   // Revoke refresh token (for logout)
-  revokeRefreshToken(refreshToken: string): void {
-    this.refreshTokens.delete(refreshToken);
+  async revokeRefreshToken(refreshToken: string): Promise<void> {
+    await this.refreshTokenModel.updateOne(
+      { token: refreshToken },
+      { revoked: true }
+    );
+  }
+
+  // Clean up expired tokens (can be called by a cron job)
+  async cleanupExpiredTokens(): Promise<number> {
+    const result = await this.refreshTokenModel.deleteMany({
+      expiresAt: { $lt: new Date() }
+    });
+    return result.deletedCount;
   }
 }

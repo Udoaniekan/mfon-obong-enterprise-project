@@ -9,6 +9,7 @@ import { AuthController } from './controllers/auth.controller';
 import { AuthService } from './services/auth.service';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Otp, OtpSchema } from './schemas/otp.schema';
+import { RefreshToken, RefreshTokenSchema } from './schemas/refresh-token.schema';
 import { SystemActivityLogModule } from '../system-activity-logs/system-activity-log.module';
 import { MaintenanceModeModule } from '../maintenance-mode/maintenance-mode.module';
 import { SessionManagementService } from '../session-management/services/session-management.service';
@@ -35,6 +36,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
     }),
     MongooseModule.forFeature([
       { name: Otp.name, schema: OtpSchema },
+      { name: RefreshToken.name, schema: RefreshTokenSchema },
       { name: SessionManagement.name, schema: SessionManagementSchema }
     ]),
   ],
