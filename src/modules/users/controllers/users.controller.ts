@@ -11,6 +11,7 @@ import {
   UseInterceptors,
   UploadedFile,
   NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { UsersService } from '../services/users.service';
 import { CreateUserDto, UpdateUserDto } from '../dto/user.dto';
@@ -81,7 +82,7 @@ export class UsersController {
       req.user.role === UserRole.ADMIN &&
       user.branchId.toString() !== req.user.branchId
     ) {
-      throw new Error(
+      throw new ForbiddenException(
         'Forbidden: ADMIN can only access users from their own branch',
       );
     }
@@ -102,7 +103,7 @@ export class UsersController {
       req.user.role === UserRole.ADMIN &&
       user.branchId.toString() !== req.user.branchId
     ) {
-      throw new Error(
+      throw new ForbiddenException(
         'Forbidden: ADMIN can only update users from their own branch',
       );
     }
@@ -126,7 +127,7 @@ export class UsersController {
   ): Promise<{ message: string }> {
     // Only allow users to update their own password or MAINTAINER
     if (req.user.role !== UserRole.MAINTAINER && req.user.userId !== id) {
-      throw new Error('Forbidden');
+      throw new ForbiddenException('Forbidden');
     }
     await this.usersService.updatePassword(
       id,
@@ -160,7 +161,7 @@ export class UsersController {
   ): Promise<{ url: string }> {
     // Only allow MAINTAINER or the owner of the profile
     if (req.user.role !== UserRole.MAINTAINER && req.user.userId !== id) {
-      throw new Error(
+      throw new ForbiddenException(
         'Forbidden: Only MAINTAINER or the owner can upload profile picture',
       );
     }
@@ -179,7 +180,7 @@ export class UsersController {
   ): Promise<{ message: string }> {
     // Only allow MAINTAINER or the owner of the profile
     if (req.user.role !== UserRole.MAINTAINER && req.user.userId !== id) {
-      throw new Error(
+      throw new ForbiddenException(
         'Forbidden: Only MAINTAINER or the owner can delete profile picture',
       );
     }
@@ -195,7 +196,7 @@ export class UsersController {
   ): Promise<User[]> {
     // Only allow ADMIN to access their own branch
     if (req.user.role === UserRole.ADMIN && req.user.branchId !== branchId) {
-      throw new Error('Forbidden: ADMIN can only access their own branch');
+      throw new ForbiddenException('Forbidden: ADMIN can only access their own branch');
     }
     return this.usersService.getUsersByBranch(branchId);
   }
