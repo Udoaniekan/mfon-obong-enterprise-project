@@ -28,7 +28,10 @@ interface AuthenticatedSocket extends Socket {
       'https://your-frontend-domain.com',
       'https://mfon-obong-enterprises.pipeops.net',
       'https://frontend-tawny-pi-78.vercel.app',
-      'https://frontend-mfon.vercel.app'
+      'https://frontend-mfon.vercel.app',
+      // Add pattern to allow all Vercel preview and production deployments
+      /^https:\/\/.*\.vercel\.app$/,
+      /^https:\/\/frontend.*\.vercel\.app$/,
     ],
     credentials: true,
   },
@@ -46,9 +49,9 @@ export class AppWebSocketGateway
   async handleConnection(client: AuthenticatedSocket) {
     try {
       // Try to get token from multiple sources: auth field, authorization header, or cookies
-      let token = client.handshake.auth?.token || 
+      let token = client.handshake.auth?.token ||
                   client.handshake.headers?.authorization?.replace('Bearer ', '');
-      
+
       // If no token in auth/headers, try to get from cookies
       if (!token && client.handshake.headers?.cookie) {
         const cookies = client.handshake.headers.cookie
@@ -58,11 +61,11 @@ export class AppWebSocketGateway
             acc[name] = value;
             return acc;
           }, {} as Record<string, string>);
-        
+
         // Try accessToken first, then refreshToken as fallback
         token = cookies.accessToken || cookies.refreshToken;
       }
-      
+
       if (!token) {
         // Try to get user info from query params as fallback (for debugging)
         const queryToken = client.handshake.query?.token;
@@ -76,7 +79,23 @@ export class AppWebSocketGateway
         }
       }
 
-      const decoded = this.jwtService.verify(token);
+      // Verify token with better error handling
+      let decoded;
+      try {
+        decoded = this.jwtService.verify(token);
+      } catch (error) {
+        // Token is invalid or expired
+        if (error.name === 'TokenExpiredError') {
+          this.logger.warn(`Client ${client.id} token expired - client should refresh and reconnect`);
+          client.emit('auth_error', { message: 'Token expired', code: 'TOKEN_EXPIRED' });
+        } else {
+          this.logger.warn(`Client ${client.id} invalid token: ${error.message}`);
+          client.emit('auth_error', { message: 'Invalid token', code: 'INVALID_TOKEN' });
+        }
+        client.disconnect();
+        return;
+      }
+
       client.userId = decoded.sub; // JWT uses 'sub' field, not 'userId'
       client.userEmail = decoded.email;
       client.userRole = decoded.role;
@@ -91,6 +110,7 @@ export class AppWebSocketGateway
       );
     } catch (error) {
       this.logger.error(`Authentication failed for client ${client.id}:`, error.message);
+      client.emit('auth_error', { message: 'Authentication failed' });
       client.disconnect();
     }
   }

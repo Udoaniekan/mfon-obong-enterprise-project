@@ -13,25 +13,35 @@ async function bootstrap() {
 
   // Enable CORS with proper configuration
   app.enableCors({
-    origin: [
-      // Development origins
-      'http://localhost:3000',
-      'http://localhost:3001', 
-      'http://localhost:4200',
-      'http://localhost:5173',
-      // Current frontend deployments
-      'https://mfon-obong-enterprises.pipeops.net',
-      'https://frontend-tawny-pi-78.vercel.app',
-      'https://frontend-mfon.vercel.app',
+    origin: (origin, callback) => {
+      const allowedOrigins = [
+        // Development origins
+        'http://localhost:3000',
+        'http://localhost:3001',
+        'http://localhost:4200',
+        'http://localhost:5173',
+        // Current frontend deployments
+        'https://mfon-obong-enterprises.pipeops.net',
+        'https://frontend-tawny-pi-78.vercel.app',
+        'https://frontend-mfon.vercel.app',
+        // Production domains
+        'https://mfonobongenterprise.com',
+        'https://www.mfonobongenterprise.com',
+        // Render deployment (frontend) - allow this origin as well
+        'https://mfon-obong-enterprise.onrender.com',
+        'https://mfon-obong-enterprises.onrender.com',
+      ];
 
-      // Production domains
-      'https://mfonobongenterprise.com',
-      'https://www.mfonobongenterprise.com',
-      // Render deployment (frontend) - allow this origin as well
-      'https://mfon-obong-enterprise.onrender.com',
-      // Add Render app alias if used
-      'https://mfon-obong-enterprises.onrender.com',
-    ],
+      // Allow all Vercel preview and production deployments
+      const vercelPattern = /^https:\/\/.*\.vercel\.app$/;
+
+      if (!origin || allowedOrigins.includes(origin) || vercelPattern.test(origin)) {
+        callback(null, true);
+      } else {
+        Logger.warn(`CORS blocked origin: ${origin}`);
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     // Allow Set-Cookie so browsers can send/receive cookies for authenticated assets
