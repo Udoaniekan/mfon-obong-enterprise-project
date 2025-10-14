@@ -19,12 +19,11 @@ async function bootstrap() {
       'http://localhost:3001', 
       'http://localhost:4200',
       'http://localhost:5173',
-      
       // Current frontend deployments
       'https://mfon-obong-enterprises.pipeops.net',
       'https://frontend-tawny-pi-78.vercel.app',
-      'https://frontend-kkue8if0i-james-ndopnnoabasis-projects.vercel.app',
-      
+      'https://frontend-mfon.vercel.app',
+
       // Production domains
       'https://mfonobongenterprise.com',
       'https://www.mfonobongenterprise.com',

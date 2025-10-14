@@ -28,7 +28,7 @@ interface AuthenticatedSocket extends Socket {
       'https://your-frontend-domain.com',
       'https://mfon-obong-enterprises.pipeops.net',
       'https://frontend-tawny-pi-78.vercel.app',
-      'https://frontend-kkue8if0i-james-ndopnnoabasis-projects.vercel.app',
+      'https://frontend-mfon.vercel.app'
     ],
     credentials: true,
   },
