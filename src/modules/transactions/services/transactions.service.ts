@@ -307,8 +307,9 @@ export class TransactionsService {
 
         // For DEPOSIT transactions: Add the deposit to client balance
         if (createTransactionDto.type === 'DEPOSIT') {
-          // Negative amount means adding credit to balance
-          ledgerAmount = -amountPaid;
+          // For DEPOSIT: addTransaction does client.balance += amount
+          // So we pass positive amount to add to balance
+          ledgerAmount = amountPaid;
           ledgerDescription = `Deposit of ${amountPaid} added to account`;
         }
         // For PURCHASE transactions: (amountPaid + balance) >= total
