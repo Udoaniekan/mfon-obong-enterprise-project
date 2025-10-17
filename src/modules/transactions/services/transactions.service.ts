@@ -305,8 +305,14 @@ export class TransactionsService {
         const client = await this.clientsService.findById(clientId.toString());
         const clientBalance = client.balance || 0;
 
+        // For DEPOSIT transactions: Add the deposit to client balance
+        if (createTransactionDto.type === 'DEPOSIT') {
+          // Negative amount means adding credit to balance
+          ledgerAmount = -amountPaid;
+          ledgerDescription = `Deposit of ${amountPaid} added to account`;
+        }
         // For PURCHASE transactions: (amountPaid + balance) >= total
-        if (createTransactionDto.type === 'PURCHASE') {
+        else if (createTransactionDto.type === 'PURCHASE') {
           const totalAvailable = amountPaid + clientBalance;
 
           if (amountPaid >= total) {
