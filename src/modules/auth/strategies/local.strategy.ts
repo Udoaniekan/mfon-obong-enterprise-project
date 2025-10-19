@@ -28,10 +28,10 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
       // Check maintenance mode before allowing login
       const maintenanceStatus = await this.maintenanceModeService.isMaintenanceMode();
       if (maintenanceStatus.isActive) {
-        // Only allow SUPER_ADMIN and MAINTAINER to login during maintenance
-        if (user.role !== UserRole.SUPER_ADMIN && user.role !== UserRole.MAINTAINER) {
+        // Only allow MAINTAINER to login during maintenance mode
+        if (user.role !== UserRole.MAINTAINER) {
           throw new ForbiddenException({
-            message: 'System is currently in maintenance mode. Login is restricted to administrators only.',
+            message: 'System is currently in maintenance mode. Only MAINTAINER can access the system.',
             statusCode: 503,
             error: 'Service Unavailable - Maintenance Mode Active'
           });

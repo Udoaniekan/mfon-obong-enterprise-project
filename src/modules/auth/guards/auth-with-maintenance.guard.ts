@@ -31,12 +31,8 @@ export class AuthWithMaintenanceGuard extends AuthGuard('jwt') implements CanAct
       return true;
     }
 
-    // If maintenance mode is active, only allow SUPER_ADMIN and the MAINTAINER who activated it
-    if (user.role === UserRole.SUPER_ADMIN) {
-      return true;
-    }
-
-    if (user.role === UserRole.MAINTAINER && maintenanceStatus.activatedBy === user.userId) {
+    // If maintenance mode is active, only allow MAINTAINER
+    if (user.role === UserRole.MAINTAINER) {
       return true;
     }
 

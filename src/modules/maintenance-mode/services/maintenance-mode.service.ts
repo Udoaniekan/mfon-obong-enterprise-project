@@ -86,14 +86,16 @@ export class MaintenanceModeService {
 
       // Emit WebSocket event to force logout all non-MAINTAINER users
       try {
+        console.log('🔔 Emitting maintenance_mode_activated event to all clients');
         this.websocketGateway.server.emit('maintenance_mode_activated', {
           message: 'System is entering maintenance mode. Please save your work.',
           reason: toggleDto.reason || 'Maintenance mode activated',
           activatedBy: currentUser.name || currentUser.email,
           timestamp: new Date().toISOString(),
         });
+        console.log('✅ maintenance_mode_activated event emitted successfully');
       } catch (wsError) {
-        console.error('Failed to emit maintenance mode WebSocket event:', wsError);
+        console.error('❌ Failed to emit maintenance mode WebSocket event:', wsError);
       }
 
       return {
