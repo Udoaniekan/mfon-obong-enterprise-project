@@ -8,6 +8,7 @@ import { SystemActivityLogModule } from '../system-activity-logs/system-activity
 import { Notification, NotificationSchema } from './schemas/notification.schema';
 import { UsersModule } from '../users/users.module';
 import { BranchNotification, BranchNotificationSchema } from '../notifications/schemas/branch-notification.schema';
+import { WebSocketModule } from '../websocket/websocket.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { BranchNotification, BranchNotificationSchema } from '../notifications/s
     MongooseModule.forFeature([{ name: BranchNotification.name, schema: BranchNotificationSchema }]),
     SystemActivityLogModule,
     UsersModule,
+    WebSocketModule,
   ],
   controllers: [MaintenanceModeController],
   providers: [MaintenanceModeService, MaintenanceModeGuard],

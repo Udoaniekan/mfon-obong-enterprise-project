@@ -8,6 +8,7 @@ import { SystemActivityLogService } from '../../system-activity-logs/services/sy
 import { extractDeviceInfo } from '../../system-activity-logs/utils/device-extractor.util';
 import { Notification, NotificationDocument } from '../schemas/notification.schema';
 import { BranchNotification, BranchNotificationDocument } from '../../notifications/schemas/branch-notification.schema';
+import { AppWebSocketGateway } from '../../websocket/websocket.gateway';
 
 @Injectable()
 export class MaintenanceModeService {
@@ -18,6 +19,7 @@ export class MaintenanceModeService {
     @InjectModel(Notification.name) private notificationModel: Model<NotificationDocument>,
     @InjectModel(BranchNotification.name) private branchNotificationModel: Model<BranchNotificationDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
+    private readonly websocketGateway: AppWebSocketGateway,
   ) {}
 
   async getCurrentMode(): Promise<MaintenanceModeDocument | null> {
@@ -82,6 +84,18 @@ export class MaintenanceModeService {
         // Optionally log error
       }
 
+      // Emit WebSocket event to force logout all non-MAINTAINER users
+      try {
+        this.websocketGateway.server.emit('maintenance_mode_activated', {
+          message: 'System is entering maintenance mode. Please save your work.',
+          reason: toggleDto.reason || 'Maintenance mode activated',
+          activatedBy: currentUser.name || currentUser.email,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (wsError) {
+        console.error('Failed to emit maintenance mode WebSocket event:', wsError);
+      }
+
       return {
         isActive: true,
         message: 'Maintenance mode activated. Only MAINTAINER can access the system.'
@@ -108,6 +122,17 @@ export class MaintenanceModeService {
         });
       } catch (logError) {
         // Optionally log error
+      }
+
+      // Emit WebSocket event to notify users that maintenance mode is deactivated
+      try {
+        this.websocketGateway.server.emit('maintenance_mode_deactivated', {
+          message: 'Maintenance mode has been deactivated. System access restored.',
+          deactivatedBy: currentUser.name || currentUser.email,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (wsError) {
+        console.error('Failed to emit maintenance mode deactivation WebSocket event:', wsError);
       }
 
       return {

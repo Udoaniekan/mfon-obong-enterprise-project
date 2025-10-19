@@ -829,6 +829,27 @@ export class TransactionsService {
       console.error('Failed to log waybill assignment:', logError);
     }
 
+    // Emit real-time event for waybill assignment
+    try {
+      const eventData = this.realtimeEventService.createEventData(
+        'updated',
+        'transaction',
+        savedTransaction._id.toString(),
+        savedTransaction,
+        {
+          id: user.userId,
+          email: user.email || 'unknown@system.com',
+          role: user.role as UserRole,
+          branchId: savedTransaction.branchId?.toString(),
+          branch: 'System Branch',
+        }
+      );
+
+      this.realtimeEventService.emitTransactionUpdated(eventData);
+    } catch (realtimeError) {
+      console.error('❌ Failed to emit waybill assignment event:', realtimeError);
+    }
+
     return savedTransaction;
   }
 
