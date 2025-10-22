@@ -25,7 +25,7 @@ export class CreateClientDto {
 
   @IsOptional()
   @IsString()
-  description?: string;
+  description: string;
 
   @IsOptional()
   @IsString()
