@@ -14,7 +14,7 @@ export class Client {
   @Prop()
   email?: string;
 
-  @Prop({ default: true })
+  @Prop()
   description: string;
 
   @Prop()

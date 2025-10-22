@@ -7,7 +7,6 @@ import {
   Min,
   IsEnum,
   IsDate,
-  IsMongoId,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -24,9 +23,9 @@ export class CreateClientDto {
   @IsEmail()
   email?: string;
 
-  @IsNotEmpty()
+  @IsOptional()
   @IsString()
-  description: string;
+  description?: string;
 
   @IsOptional()
   @IsString()
