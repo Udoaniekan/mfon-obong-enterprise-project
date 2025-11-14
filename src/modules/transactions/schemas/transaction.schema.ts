@@ -33,7 +33,7 @@ export class Transaction {
 
   @Prop({
     type: String,
-    enum: ['DEPOSIT', 'PURCHASE', 'PICKUP'],
+    enum: ['DEPOSIT', 'PURCHASE', 'PICKUP', 'RETURN'],
     required: true,
   })
   type: string;
@@ -113,6 +113,19 @@ export class Transaction {
 
   @Prop()
   notes?: string;
+
+  // Fields specific to RETURN transactions
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Transaction' })
+  referenceTransactionId?: MongooseSchema.Types.ObjectId;
+
+  @Prop()
+  reason?: string;
+
+  @Prop({ type: Number })
+  totalRefundedAmount?: number;
+
+  @Prop({ type: Number })
+  actualAmountReturned?: number;
 }
 
 export const TransactionSchema = SchemaFactory.createForClass(Transaction);

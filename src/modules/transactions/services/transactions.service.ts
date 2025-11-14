@@ -43,6 +43,11 @@ export class TransactionsService {
     user: { userId: string; role: string; email?: string; name?: string; branch?:string },
     userAgent: string
   ): Promise<Transaction & { clientBalance?: number }> {
+    // Handle RETURN transactions separately
+    if (createTransactionDto.type === 'RETURN') {
+      return this.createReturnTransaction(createTransactionDto, user, userAgent);
+    }
+
     let clientId: Types.ObjectId | undefined = undefined;
     let walkInClient: any = undefined;
 
@@ -459,6 +464,182 @@ export class TransactionsService {
       } catch (error) {
         console.error('Failed to fetch updated client balance:', error);
       }
+    }
+
+    return {
+      ...savedTransaction.toJSON(),
+      clientBalance,
+    };
+  }
+
+  async createReturnTransaction(
+    createTransactionDto: CreateTransactionDto,
+    user: { userId: string; role: string; email?: string; name?: string; branch?: string },
+    userAgent: string
+  ): Promise<Transaction & { clientBalance?: number }> {
+    // Validate required fields for RETURN transactions
+    if (!createTransactionDto.referenceTransactionId) {
+      throw new BadRequestException('referenceTransactionId is required for RETURN transactions');
+    }
+    if (!createTransactionDto.reason) {
+      throw new BadRequestException('reason is required for RETURN transactions');
+    }
+    if (!createTransactionDto.returnedItems || createTransactionDto.returnedItems.length === 0) {
+      throw new BadRequestException('returnedItems are required for RETURN transactions');
+    }
+    if (createTransactionDto.actualAmountReturned === undefined || createTransactionDto.actualAmountReturned < 0) {
+      throw new BadRequestException('actualAmountReturned is required and must be >= 0 for RETURN transactions');
+    }
+
+    // Fetch the original transaction
+    const originalTransaction = await this.transactionModel.findById(createTransactionDto.referenceTransactionId);
+    if (!originalTransaction) {
+      throw new NotFoundException('Original transaction not found');
+    }
+
+    // Validate that the original transaction is not a DEPOSIT or RETURN
+    if (originalTransaction.type === 'DEPOSIT' || originalTransaction.type === 'RETURN') {
+      throw new BadRequestException('Cannot create a return for a DEPOSIT or RETURN transaction');
+    }
+
+    // Process returned items and calculate refunds
+    let totalRefundedAmount = 0;
+    const processedReturnedItems: any[] = [];
+
+    for (const returnItem of createTransactionDto.returnedItems) {
+      // Find the item in the original transaction
+      const originalItem = originalTransaction.items.find(
+        (item: any) => item.productId.toString() === returnItem.productId
+      );
+
+      if (!originalItem) {
+        throw new BadRequestException(
+          `Product ${returnItem.productId} was not in the original transaction`
+        );
+      }
+
+      // Validate unit matches
+      if (returnItem.unit !== originalItem.unit) {
+        throw new BadRequestException(
+          `Unit mismatch for product ${returnItem.productId}. Expected: ${originalItem.unit}, Got: ${returnItem.unit}`
+        );
+      }
+
+      // Validate return quantity doesn't exceed purchased quantity
+      if (returnItem.quantity > originalItem.quantity) {
+        throw new BadRequestException(
+          `Return quantity (${returnItem.quantity}) exceeds purchased quantity (${originalItem.quantity}) for product ${originalItem.productName}`
+        );
+      }
+
+      // Get current product to check current price
+      const currentProduct = await this.productsService.findById(returnItem.productId);
+      const originalPricePerUnit = originalItem.unitPrice;
+      const currentPricePerUnit = currentProduct.unitPrice;
+
+      // Calculate refund per your business rules:
+      // If price increased, refund at original price
+      // If price decreased, refund at new (lower) price
+      const refundPricePerUnit = currentPricePerUnit < originalPricePerUnit 
+        ? currentPricePerUnit 
+        : originalPricePerUnit;
+
+      const itemRefundAmount = refundPricePerUnit * returnItem.quantity;
+      totalRefundedAmount += itemRefundAmount;
+
+      processedReturnedItems.push({
+        productId: returnItem.productId,
+        productName: originalItem.productName,
+        quantity: returnItem.quantity,
+        unit: returnItem.unit,
+        originalUnitPrice: originalPricePerUnit,
+        currentUnitPrice: currentPricePerUnit,
+        refundUnitPrice: refundPricePerUnit,
+        subtotal: itemRefundAmount,
+      });
+
+      // Add returned quantity back to stock
+      await this.productsService.updateStock(returnItem.productId, {
+        quantity: returnItem.quantity,
+        unit: returnItem.unit,
+        operation: StockOperation.ADD,
+      });
+    }
+
+    // Create the return transaction
+    const accountingDate = createTransactionDto.date ? new Date(createTransactionDto.date) : new Date();
+
+    const returnTransaction = new this.transactionModel({
+      invoiceNumber: await this.generateInvoiceNumber(accountingDate),
+      clientId: originalTransaction.clientId,
+      walkInClient: originalTransaction.walkInClient,
+      userId: new Types.ObjectId(user.userId),
+      items: processedReturnedItems,
+      subtotal: totalRefundedAmount,
+      discount: 0,
+      transportFare: 0,
+      loadingAndOffloading: 0,
+      loading: 0,
+      total: totalRefundedAmount,
+      amountPaid: 0,
+      status: 'COMPLETED',
+      branchId: createTransactionDto.branchId || originalTransaction.branchId,
+      type: 'RETURN',
+      referenceTransactionId: new Types.ObjectId(createTransactionDto.referenceTransactionId),
+      reason: createTransactionDto.reason,
+      totalRefundedAmount: totalRefundedAmount,
+      actualAmountReturned: createTransactionDto.actualAmountReturned,
+      date: accountingDate,
+      notes: createTransactionDto.notes,
+    });
+
+    // Save the return transaction
+    const savedTransaction = await returnTransaction.save();
+
+    // Update client balance if it's a registered client (deduct the actual amount returned)
+    let clientBalance = 0;
+    if (originalTransaction.clientId) {
+      await this.clientsService.addTransaction(originalTransaction.clientId.toString(), {
+        type: 'RETURN',
+        amount: createTransactionDto.actualAmountReturned,
+        description: `Return for Invoice #${originalTransaction.invoiceNumber} - Reason: ${createTransactionDto.reason}`,
+        reference: savedTransaction._id.toString(),
+        date: accountingDate,
+      });
+
+      try {
+        const client = await this.clientsService.findById(originalTransaction.clientId.toString());
+        clientBalance = client.balance || 0;
+      } catch (error) {
+        console.error('Failed to fetch updated client balance:', error);
+      }
+    }
+
+    // Log return transaction activity
+    try {
+      await this.systemActivityLogService.createLog({
+        action: 'RETURN_TRANSACTION_CREATED',
+        details: `Return transaction ${savedTransaction.invoiceNumber} created for original transaction ${originalTransaction.invoiceNumber}. Total Refunded: ${totalRefundedAmount}, Actual Amount Returned: ${createTransactionDto.actualAmountReturned}`,
+        performedBy: user.email || user.name || user.userId,
+        role: user.role,
+        device: extractDeviceInfo(userAgent) || '',
+      });
+    } catch (logError) {
+      console.error('Failed to log return transaction:', logError);
+    }
+
+    // Emit real-time event
+    try {
+      this.realtimeEventService.emitTransactionEvent(
+        'transaction_created',
+        savedTransaction,
+        user.role as UserRole,
+        user.email,
+        savedTransaction.branchId?.toString(),
+        user.branch
+      );
+    } catch (realtimeError) {
+      console.error('Failed to emit real-time return transaction event:', realtimeError);
     }
 
     return {

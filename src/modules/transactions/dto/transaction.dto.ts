@@ -44,12 +44,25 @@ export class TransactionItemDto {
   discount?: number;
 }
 
+export class ReturnItemDto {
+  @IsMongoId()
+  productId: string;
+
+  @IsNumber()
+  @Min(0)
+  quantity: number;
+
+  @IsString()
+  unit: string;
+}
+
 // ...existing code...
 
 export enum TransactionType {
   DEPOSIT = 'DEPOSIT',
   PURCHASE = 'PURCHASE',
   PICKUP = 'PICKUP',
+  RETURN = 'RETURN',
 }
 
 export class CreateTransactionDto {
@@ -113,6 +126,26 @@ export class CreateTransactionDto {
   @Type(() => Date)
   @IsDate()
   date?: Date;
+
+  // Fields for RETURN transactions
+  @IsOptional()
+  @IsMongoId()
+  referenceTransactionId?: string;
+
+  @IsOptional()
+  @IsString()
+  reason?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ReturnItemDto)
+  returnedItems?: ReturnItemDto[];
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  actualAmountReturned?: number;
 }
 
 export class UpdateTransactionDto {
