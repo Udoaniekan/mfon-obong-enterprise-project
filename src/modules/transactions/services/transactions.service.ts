@@ -76,6 +76,26 @@ export class TransactionsService {
       );
     }
 
+    // Validate mutual exclusivity of loading charges
+    const loadingCharge = createTransactionDto.loading || 0;
+    const loadingAndOffloadingCharge = createTransactionDto.loadingAndOffloading || 0;
+    
+    if (loadingCharge > 0 && loadingAndOffloadingCharge > 0) {
+      throw new BadRequestException(
+        'Cannot have both "loading" and "loadingAndOffloading" charges in the same transaction. Please use only one.'
+      );
+    }
+
+    // Validate that additional charges are not applied to DEPOSIT transactions
+    if (createTransactionDto.type === 'DEPOSIT') {
+      const transportFare = createTransactionDto.transportFare || 0;
+      if (transportFare > 0 || loadingCharge > 0 || loadingAndOffloadingCharge > 0) {
+        throw new BadRequestException(
+          'Transport fare, loading, and loadingAndOffloading charges cannot be applied to DEPOSIT transactions.'
+        );
+      }
+    }
+
     // Process items and calculate totals (skip for DEPOSIT transactions)
     let subtotal = 0;
     let processedItems: any[] = [];
@@ -127,7 +147,13 @@ export class TransactionsService {
       );
     }
 
-    const total = subtotal - (createTransactionDto.discount || 0);
+    // Calculate total with additional charges
+    const discount = createTransactionDto.discount || 0;
+    const transportFare = createTransactionDto.transportFare || 0;
+    const loadingAndOffloading = createTransactionDto.loadingAndOffloading || 0;
+    const loading = createTransactionDto.loading || 0;
+    
+    const total = subtotal - discount + transportFare + loadingAndOffloading + loading;
     const amountPaid = createTransactionDto.amountPaid || 0;
 
     // Create transaction
@@ -204,6 +230,9 @@ export class TransactionsService {
       items: processedItems,
       subtotal,
       discount: createTransactionDto.discount || 0,
+      transportFare: createTransactionDto.transportFare || 0,
+      loadingAndOffloading: createTransactionDto.loadingAndOffloading || 0,
+      loading: createTransactionDto.loading || 0,
       total,
       amountPaid,
       paymentMethod: createTransactionDto.paymentMethod,
@@ -515,6 +544,54 @@ export class TransactionsService {
       throw new NotFoundException('Transaction not found');
     }
 
+    // Validate mutual exclusivity of loading charges if being updated
+    if (updateTransactionDto.loading !== undefined || updateTransactionDto.loadingAndOffloading !== undefined) {
+      const newLoading = updateTransactionDto.loading !== undefined ? updateTransactionDto.loading : transaction.loading;
+      const newLoadingAndOffloading = updateTransactionDto.loadingAndOffloading !== undefined 
+        ? updateTransactionDto.loadingAndOffloading 
+        : transaction.loadingAndOffloading;
+      
+      if (newLoading > 0 && newLoadingAndOffloading > 0) {
+        throw new BadRequestException(
+          'Cannot have both "loading" and "loadingAndOffloading" charges in the same transaction. Please use only one.'
+        );
+      }
+    }
+
+    // Validate that additional charges are not applied to DEPOSIT transactions
+    if (transaction.type === 'DEPOSIT') {
+      if (updateTransactionDto.transportFare || updateTransactionDto.loading || updateTransactionDto.loadingAndOffloading) {
+        throw new BadRequestException(
+          'Transport fare, loading, and loadingAndOffloading charges cannot be applied to DEPOSIT transactions.'
+        );
+      }
+    }
+
+    // Handle additional charges updates - recalculate total if any charges are updated
+    if (
+      updateTransactionDto.transportFare !== undefined ||
+      updateTransactionDto.loadingAndOffloading !== undefined ||
+      updateTransactionDto.loading !== undefined
+    ) {
+      const newTransportFare = updateTransactionDto.transportFare !== undefined 
+        ? updateTransactionDto.transportFare 
+        : transaction.transportFare;
+      const newLoadingAndOffloading = updateTransactionDto.loadingAndOffloading !== undefined 
+        ? updateTransactionDto.loadingAndOffloading 
+        : transaction.loadingAndOffloading;
+      const newLoading = updateTransactionDto.loading !== undefined 
+        ? updateTransactionDto.loading 
+        : transaction.loading;
+      
+      // Recalculate total
+      transaction.total = transaction.subtotal - transaction.discount + newTransportFare + newLoadingAndOffloading + newLoading;
+      
+      // Update the charge fields
+      transaction.transportFare = newTransportFare;
+      transaction.loadingAndOffloading = newLoadingAndOffloading;
+      transaction.loading = newLoading;
+    }
+
     // Handle payment updates
     if (updateTransactionDto.amountPaid !== undefined) {
       const newAmountPaid =
@@ -670,6 +747,26 @@ export class TransactionsService {
   ): Promise<any> {
     let clientBalance = 0;
 
+    // Validate mutual exclusivity of loading charges
+    const loadingCharge = calculateTransactionDto.loading || 0;
+    const loadingAndOffloadingCharge = calculateTransactionDto.loadingAndOffloading || 0;
+    
+    if (loadingCharge > 0 && loadingAndOffloadingCharge > 0) {
+      throw new BadRequestException(
+        'Cannot have both "loading" and "loadingAndOffloading" charges in the same transaction. Please use only one.'
+      );
+    }
+
+    // Validate that additional charges are not applied to DEPOSIT transactions
+    if (calculateTransactionDto.type === 'DEPOSIT') {
+      const transportFare = calculateTransactionDto.transportFare || 0;
+      if (transportFare > 0 || loadingCharge > 0 || loadingAndOffloadingCharge > 0) {
+        throw new BadRequestException(
+          'Transport fare, loading, and loadingAndOffloading charges cannot be applied to DEPOSIT transactions.'
+        );
+      }
+    }
+
     // Get client balance if it's a registered client
     if (calculateTransactionDto.clientId) {
       const client = await this.clientsService.findById(
@@ -738,13 +835,22 @@ export class TransactionsService {
       );
     }
 
-    const total = subtotal - (calculateTransactionDto.discount || 0);
+    // Calculate total with additional charges
+    const discount = calculateTransactionDto.discount || 0;
+    const transportFare = calculateTransactionDto.transportFare || 0;
+    const loadingAndOffloading = calculateTransactionDto.loadingAndOffloading || 0;
+    const loading = calculateTransactionDto.loading || 0;
+    
+    const total = subtotal - discount + transportFare + loadingAndOffloading + loading;
 
     // Calculate required payment based on client type and transaction type
     let requiredPayment = total;
     const paymentDetails = {
       subtotal,
       discount: calculateTransactionDto.discount || 0,
+      transportFare: calculateTransactionDto.transportFare || 0,
+      loadingAndOffloading: calculateTransactionDto.loadingAndOffloading || 0,
+      loading: calculateTransactionDto.loading || 0,
       total,
       clientBalance,
       requiredPayment,

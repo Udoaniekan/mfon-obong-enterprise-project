@@ -70,6 +70,15 @@ export class Transaction {
   @Prop({ default: 0 })
   discount: number;
 
+  @Prop({ default: 0 })
+  transportFare: number;
+
+  @Prop({ default: 0 })
+  loadingAndOffloading: number;
+
+  @Prop({ default: 0 })
+  loading: number;
+
   @Prop({ required: true })
   total: number;
 

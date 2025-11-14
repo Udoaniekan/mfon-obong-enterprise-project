@@ -10,6 +10,7 @@ import {
   ValidateNested,
   Min,
   IsNotEmpty,
+  IsInt,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -77,6 +78,21 @@ export class CreateTransactionDto {
   discount?: number;
 
   @IsOptional()
+  @IsInt()
+  @Min(0)
+  transportFare?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  loadingAndOffloading?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  loading?: number;
+
+  @IsOptional()
   @IsNumber()
   @Min(0)
   amountPaid?: number;
@@ -100,6 +116,21 @@ export class CreateTransactionDto {
 }
 
 export class UpdateTransactionDto {
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  transportFare?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  loadingAndOffloading?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  loading?: number;
+
   @IsOptional()
   @IsNumber()
   @Min(0)
@@ -155,6 +186,21 @@ export class CalculateTransactionDto {
   @IsNumber()
   @Min(0)
   discount?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  transportFare?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  loadingAndOffloading?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  loading?: number;
 
   @IsOptional()
   @IsNumber()
