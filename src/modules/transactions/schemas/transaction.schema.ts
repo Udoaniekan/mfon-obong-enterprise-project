@@ -24,6 +24,9 @@ export class TransactionItem {
 
   @Prop({ required: true })
   subtotal: number;
+
+  @Prop()
+  wholesalePrice?: number;
 }
 
 @Schema({ timestamps: true })
@@ -33,7 +36,7 @@ export class Transaction {
 
   @Prop({
     type: String,
-    enum: ['DEPOSIT', 'PURCHASE', 'PICKUP', 'RETURN'],
+    enum: ['DEPOSIT', 'PURCHASE', 'PICKUP', 'RETURN', 'WHOLESALE'],
     required: true,
   })
   type: string;

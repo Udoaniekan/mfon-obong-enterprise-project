@@ -42,6 +42,11 @@ export class TransactionItemDto {
   @IsNumber()
   @Min(0)
   discount?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  wholesalePrice?: number;
 }
 
 export class ReturnItemDto {
@@ -63,6 +68,7 @@ export enum TransactionType {
   PURCHASE = 'PURCHASE',
   PICKUP = 'PICKUP',
   RETURN = 'RETURN',
+  WHOLESALE = 'WHOLESALE',
 }
 
 export class CreateTransactionDto {

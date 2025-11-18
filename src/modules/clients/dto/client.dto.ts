@@ -63,9 +63,8 @@ export class UpdateClientDto {
 }
 
 export class AddTransactionDto {
-  @IsNotEmpty()
-  @IsEnum(['DEPOSIT', 'PURCHASE', 'PICKUP'])
-  type: 'DEPOSIT' | 'PURCHASE' | 'PICKUP';
+  @IsEnum(['DEPOSIT', 'PURCHASE', 'PICKUP', 'RETURN', 'WHOLESALE'])
+  type: 'DEPOSIT' | 'PURCHASE' | 'PICKUP' | 'RETURN' | 'WHOLESALE';
 
   @IsNotEmpty()
   @IsNumber()

@@ -5,6 +5,7 @@ import { TransactionsService } from './services/transactions.service';
 import { TransactionsController } from './controllers/transactions.controller';
 import { ProductsModule } from '../products/products.module';
 import { ClientsModule } from '../clients/clients.module';
+import { CategoriesModule } from '../categories/categories.module';
 import { SystemActivityLogModule } from '../system-activity-logs/system-activity-log.module';
 import { WebSocketModule } from '../websocket/websocket.module';
 
@@ -15,6 +16,7 @@ import { WebSocketModule } from '../websocket/websocket.module';
     ]),
     ProductsModule,
     ClientsModule,
+    CategoriesModule,
     SystemActivityLogModule,
     WebSocketModule,
   ],
