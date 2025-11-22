@@ -1,4 +1,4 @@
-import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
+import { Injectable, ExecutionContext } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Reflector } from '@nestjs/core';
 import { SessionManagementService } from '../../session-management/services/session-management.service';
@@ -65,7 +65,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
           return false;
         }
       }
-    } catch (error) {
+    } catch (_error) {
       // Fail-open: if session check fails, allow access
       return true;
     }

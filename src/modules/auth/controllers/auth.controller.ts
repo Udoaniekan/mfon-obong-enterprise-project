@@ -1,6 +1,6 @@
 import { Controller, Post, Body, Request, Response, UseGuards, BadRequestException } from '@nestjs/common';
 import { AuthService } from '../services/auth.service';
-import { OtpRequestDto, OtpVerifyDto } from '../dto/otp-request.dto';
+// OTP DTOs removed - using admin password reset instead
 import { RefreshTokenDto } from '../dto/auth.dto';
 import { AuthGuard } from '@nestjs/passport';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
@@ -82,7 +82,7 @@ export class AuthController {
     res.clearCookie('refreshToken');
     
     // Blacklist tokens in AuthService
-    const result = await this.authService.logout(req.user, token, userAgent);
+    await this.authService.logout(req.user, token, userAgent);
     
     // Also invalidate refresh token if it exists
     if (refreshToken) {

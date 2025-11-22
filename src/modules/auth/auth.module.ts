@@ -13,7 +13,7 @@ import { RefreshToken, RefreshTokenSchema } from './schemas/refresh-token.schema
 import { SystemActivityLogModule } from '../system-activity-logs/system-activity-log.module';
 import { MaintenanceModeModule } from '../maintenance-mode/maintenance-mode.module';
 import { SessionManagementService } from '../session-management/services/session-management.service';
-import { MongooseModule as SessionMongooseModule } from '@nestjs/mongoose';
+// MongooseModule alias removed - using main MongooseModule import
 import { SessionManagement, SessionManagementSchema } from '../session-management/schemas/session-management.schema';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 

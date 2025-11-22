@@ -46,7 +46,7 @@ export class CookieRefreshMiddleware implements NestMiddleware {
             req.cookies.accessToken = newAccessToken;
           }
         }
-      } catch (error) {
+      } catch (_error) {
         // Refresh token invalid or expired - clear cookies
         res.clearCookie('accessToken');
         res.clearCookie('refreshToken');
@@ -88,7 +88,7 @@ export class CookieRefreshMiddleware implements NestMiddleware {
                 req.cookies.accessToken = newAccessToken;
               }
             }
-          } catch (refreshError) {
+          } catch (_refreshError) {
             // Both tokens invalid - clear cookies
             res.clearCookie('accessToken');
             res.clearCookie('refreshToken');
