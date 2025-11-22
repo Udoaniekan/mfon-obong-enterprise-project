@@ -26,7 +26,7 @@ export class Client {
   @Prop({
     type: [
       {
-        type: { type: String, enum: ['DEPOSIT', 'PURCHASE', 'PICKUP'] },
+        type: { type: String, enum: ['DEPOSIT', 'PURCHASE', 'PICKUP', 'RETURN', 'WHOLESALE'] },
         amount: Number,
         description: String,
         date: Date,
@@ -35,7 +35,7 @@ export class Client {
     ],
   })
   transactions: Array<{
-    type: 'DEPOSIT' | 'PURCHASE' | 'PICKUP';
+    type: 'DEPOSIT' | 'PURCHASE' | 'PICKUP' | 'RETURN' | 'WHOLESALE';
     amount: number;
     description: string;
     date: Date;

@@ -24,6 +24,9 @@ export class TransactionItem {
 
   @Prop({ required: true })
   subtotal: number;
+
+  @Prop()
+  wholesalePrice?: number;
 }
 
 @Schema({ timestamps: true })
@@ -33,7 +36,7 @@ export class Transaction {
 
   @Prop({
     type: String,
-    enum: ['DEPOSIT', 'PURCHASE', 'PICKUP'],
+    enum: ['DEPOSIT', 'PURCHASE', 'PICKUP', 'RETURN', 'WHOLESALE'],
     required: true,
   })
   type: string;
@@ -70,6 +73,15 @@ export class Transaction {
   @Prop({ default: 0 })
   discount: number;
 
+  @Prop({ default: 0 })
+  transportFare: number;
+
+  @Prop({ default: 0 })
+  loadingAndOffloading: number;
+
+  @Prop({ default: 0 })
+  loading: number;
+
   @Prop({ required: true })
   total: number;
 
@@ -104,6 +116,19 @@ export class Transaction {
 
   @Prop()
   notes?: string;
+
+  // Fields specific to RETURN transactions
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Transaction' })
+  referenceTransactionId?: MongooseSchema.Types.ObjectId;
+
+  @Prop()
+  reason?: string;
+
+  @Prop({ type: Number })
+  totalRefundedAmount?: number;
+
+  @Prop({ type: Number })
+  actualAmountReturned?: number;
 }
 
 export const TransactionSchema = SchemaFactory.createForClass(Transaction);

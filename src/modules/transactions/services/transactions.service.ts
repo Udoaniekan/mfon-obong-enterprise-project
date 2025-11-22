@@ -13,6 +13,7 @@ import {
 import { Product } from '../../products/schemas/product.schema';
 import { ClientsService } from '../../clients/services/clients.service';
 import { ProductsService } from '../../products/services/products.service';
+import { CategoriesService } from '../../categories/services/categories.service';
 import { StockOperation } from '../../products/dto/product.dto';
 import { SystemActivityLogService } from '../../system-activity-logs/services/system-activity-log.service';
 import { RealtimeEventService } from '../../websocket/realtime-event.service';
@@ -22,6 +23,7 @@ import {
   UpdateTransactionDto,
   QueryTransactionsDto,
   CalculateTransactionDto,
+  TransactionType,
 } from '../dto/transaction.dto';
 import { extractDeviceInfo } from 'src/modules/system-activity-logs/utils/device-extractor.util';
 
@@ -34,6 +36,7 @@ export class TransactionsService {
     private readonly productModel: Model<Product>,
     private readonly clientsService: ClientsService,
     private readonly productsService: ProductsService,
+    private readonly categoriesService: CategoriesService,
     private readonly systemActivityLogService: SystemActivityLogService,
     private readonly realtimeEventService: RealtimeEventService,
   ) {}
@@ -43,6 +46,16 @@ export class TransactionsService {
     user: { userId: string; role: string; email?: string; name?: string; branch?:string },
     userAgent: string
   ): Promise<Transaction & { clientBalance?: number }> {
+    // Handle RETURN transactions separately
+    if (createTransactionDto.type === 'RETURN') {
+      return this.createReturnTransaction(createTransactionDto, user, userAgent);
+    }
+
+    // Handle WHOLESALE transactions separately
+    if (createTransactionDto.type === 'WHOLESALE') {
+      return this.createWholesaleTransaction(createTransactionDto, user, userAgent);
+    }
+
     let clientId: Types.ObjectId | undefined = undefined;
     let walkInClient: any = undefined;
 
@@ -74,6 +87,26 @@ export class TransactionsService {
       throw new BadRequestException(
         'Either clientId or walkInClient details (name) must be provided',
       );
+    }
+
+    // Validate mutual exclusivity of loading charges
+    const loadingCharge = createTransactionDto.loading || 0;
+    const loadingAndOffloadingCharge = createTransactionDto.loadingAndOffloading || 0;
+    
+    if (loadingCharge > 0 && loadingAndOffloadingCharge > 0) {
+      throw new BadRequestException(
+        'Cannot have both "loading" and "loadingAndOffloading" charges in the same transaction. Please use only one.'
+      );
+    }
+
+    // Validate that additional charges are not applied to DEPOSIT transactions
+    if (createTransactionDto.type === 'DEPOSIT') {
+      const transportFare = createTransactionDto.transportFare || 0;
+      if (transportFare > 0 || loadingCharge > 0 || loadingAndOffloadingCharge > 0) {
+        throw new BadRequestException(
+          'Transport fare, loading, and loadingAndOffloading charges cannot be applied to DEPOSIT transactions.'
+        );
+      }
     }
 
     // Process items and calculate totals (skip for DEPOSIT transactions)
@@ -127,7 +160,13 @@ export class TransactionsService {
       );
     }
 
-    const total = subtotal - (createTransactionDto.discount || 0);
+    // Calculate total with additional charges
+    const discount = createTransactionDto.discount || 0;
+    const transportFare = createTransactionDto.transportFare || 0;
+    const loadingAndOffloading = createTransactionDto.loadingAndOffloading || 0;
+    const loading = createTransactionDto.loading || 0;
+    
+    const total = subtotal - discount + transportFare + loadingAndOffloading + loading;
     const amountPaid = createTransactionDto.amountPaid || 0;
 
     // Create transaction
@@ -204,6 +243,9 @@ export class TransactionsService {
       items: processedItems,
       subtotal,
       discount: createTransactionDto.discount || 0,
+      transportFare: createTransactionDto.transportFare || 0,
+      loadingAndOffloading: createTransactionDto.loadingAndOffloading || 0,
+      loading: createTransactionDto.loading || 0,
       total,
       amountPaid,
       paymentMethod: createTransactionDto.paymentMethod,
@@ -255,7 +297,7 @@ export class TransactionsService {
     // After successful save, perform side-effects (stock updates and client ledger)
     // Update stock levels (and be able to revert on failure) - Skip for DEPOSIT transactions
     const updatedProducts: Array<{ productId: string; quantity: number; unit: string }> = [];
-    if (createTransactionDto.type !== 'DEPOSIT') {
+    if (createTransactionDto.type !== TransactionType.DEPOSIT) {
       try {
         for (const item of transaction.items) {
           await this.productsService.updateStock(item.productId.toString(), {
@@ -438,6 +480,459 @@ export class TransactionsService {
     };
   }
 
+  async createReturnTransaction(
+    createTransactionDto: CreateTransactionDto,
+    user: { userId: string; role: string; email?: string; name?: string; branch?: string },
+    userAgent: string
+  ): Promise<Transaction & { clientBalance?: number }> {
+    // Validate required fields for RETURN transactions
+    if (!createTransactionDto.referenceTransactionId) {
+      throw new BadRequestException('referenceTransactionId is required for RETURN transactions');
+    }
+    if (!createTransactionDto.reason) {
+      throw new BadRequestException('reason is required for RETURN transactions');
+    }
+    if (!createTransactionDto.returnedItems || createTransactionDto.returnedItems.length === 0) {
+      throw new BadRequestException('returnedItems are required for RETURN transactions');
+    }
+    if (createTransactionDto.actualAmountReturned === undefined || createTransactionDto.actualAmountReturned < 0) {
+      throw new BadRequestException('actualAmountReturned is required and must be >= 0 for RETURN transactions');
+    }
+
+    // Fetch the original transaction
+    const originalTransaction = await this.transactionModel.findById(createTransactionDto.referenceTransactionId);
+    if (!originalTransaction) {
+      throw new NotFoundException('Original transaction not found');
+    }
+
+    // Validate that the original transaction is not a DEPOSIT or RETURN
+    if (originalTransaction.type === 'DEPOSIT' || originalTransaction.type === 'RETURN') {
+      throw new BadRequestException('Cannot create a return for a DEPOSIT or RETURN transaction');
+    }
+
+    // Process returned items and calculate refunds
+    let totalRefundedAmount = 0;
+    const processedReturnedItems: any[] = [];
+
+    for (const returnItem of createTransactionDto.returnedItems) {
+      // Find the item in the original transaction
+      const originalItem = originalTransaction.items.find(
+        (item: any) => item.productId.toString() === returnItem.productId
+      );
+
+      if (!originalItem) {
+        throw new BadRequestException(
+          `Product ${returnItem.productId} was not in the original transaction`
+        );
+      }
+
+      // Validate unit matches
+      if (returnItem.unit !== originalItem.unit) {
+        throw new BadRequestException(
+          `Unit mismatch for product ${returnItem.productId}. Expected: ${originalItem.unit}, Got: ${returnItem.unit}`
+        );
+      }
+
+      // Validate return quantity doesn't exceed purchased quantity
+      if (returnItem.quantity > originalItem.quantity) {
+        throw new BadRequestException(
+          `Return quantity (${returnItem.quantity}) exceeds purchased quantity (${originalItem.quantity}) for product ${originalItem.productName}`
+        );
+      }
+
+      // Get current product to check current price
+      const currentProduct = await this.productsService.findById(returnItem.productId);
+      const originalPricePerUnit = originalItem.unitPrice;
+      const currentPricePerUnit = currentProduct.unitPrice;
+
+      // Calculate refund per your business rules:
+      // If price increased, refund at original price
+      // If price decreased, refund at new (lower) price
+      const refundPricePerUnit = currentPricePerUnit < originalPricePerUnit 
+        ? currentPricePerUnit 
+        : originalPricePerUnit;
+
+      const itemRefundAmount = refundPricePerUnit * returnItem.quantity;
+      totalRefundedAmount += itemRefundAmount;
+
+      processedReturnedItems.push({
+        productId: returnItem.productId,
+        productName: originalItem.productName,
+        quantity: returnItem.quantity,
+        unit: returnItem.unit,
+        originalUnitPrice: originalPricePerUnit,
+        currentUnitPrice: currentPricePerUnit,
+        refundUnitPrice: refundPricePerUnit,
+        subtotal: itemRefundAmount,
+      });
+
+      // Add returned quantity back to stock
+      await this.productsService.updateStock(returnItem.productId, {
+        quantity: returnItem.quantity,
+        unit: returnItem.unit,
+        operation: StockOperation.ADD,
+      });
+    }
+
+    // Create the return transaction
+    const accountingDate = createTransactionDto.date ? new Date(createTransactionDto.date) : new Date();
+
+    const returnTransaction = new this.transactionModel({
+      invoiceNumber: await this.generateInvoiceNumber(accountingDate),
+      clientId: originalTransaction.clientId,
+      walkInClient: originalTransaction.walkInClient,
+      userId: new Types.ObjectId(user.userId),
+      items: processedReturnedItems,
+      subtotal: totalRefundedAmount,
+      discount: 0,
+      transportFare: 0,
+      loadingAndOffloading: 0,
+      loading: 0,
+      total: totalRefundedAmount,
+      amountPaid: 0,
+      status: 'COMPLETED',
+      branchId: createTransactionDto.branchId || originalTransaction.branchId,
+      type: 'RETURN',
+      referenceTransactionId: new Types.ObjectId(createTransactionDto.referenceTransactionId),
+      reason: createTransactionDto.reason,
+      totalRefundedAmount: totalRefundedAmount,
+      actualAmountReturned: createTransactionDto.actualAmountReturned,
+      date: accountingDate,
+      notes: createTransactionDto.notes,
+    });
+
+    // Save the return transaction
+    const savedTransaction = await returnTransaction.save();
+
+    // Update client balance if it's a registered client (deduct the actual amount returned)
+    let clientBalance = 0;
+    if (originalTransaction.clientId) {
+      await this.clientsService.addTransaction(originalTransaction.clientId.toString(), {
+        type: 'RETURN',
+        amount: createTransactionDto.actualAmountReturned,
+        description: `Return for Invoice #${originalTransaction.invoiceNumber} - Reason: ${createTransactionDto.reason}`,
+        reference: savedTransaction._id.toString(),
+        date: accountingDate,
+      });
+
+      try {
+        const client = await this.clientsService.findById(originalTransaction.clientId.toString());
+        clientBalance = client.balance || 0;
+      } catch (error) {
+        console.error('Failed to fetch updated client balance:', error);
+      }
+    }
+
+    // Log return transaction activity
+    try {
+      await this.systemActivityLogService.createLog({
+        action: 'RETURN_TRANSACTION_CREATED',
+        details: `Return transaction ${savedTransaction.invoiceNumber} created for original transaction ${originalTransaction.invoiceNumber}. Total Refunded: ${totalRefundedAmount}, Actual Amount Returned: ${createTransactionDto.actualAmountReturned}`,
+        performedBy: user.email || user.name || user.userId,
+        role: user.role,
+        device: extractDeviceInfo(userAgent) || '',
+      });
+    } catch (logError) {
+      console.error('Failed to log return transaction:', logError);
+    }
+
+    // Emit real-time event
+    try {
+      const eventData = this.realtimeEventService.createEventData(
+        'created',
+        'transaction',
+        savedTransaction._id.toString(),
+        savedTransaction,
+        {
+          id: user.userId,
+          email: user.email || 'unknown@system.com',
+          role: user.role as UserRole,
+          branchId: savedTransaction.branchId?.toString(),
+          branch: user.branch || 'System Branch',
+        }
+      );
+      
+      this.realtimeEventService.emitTransactionCreated(eventData);
+    } catch (realtimeError) {
+      console.error('Failed to emit real-time return transaction event:', realtimeError);
+    }
+
+    return {
+      ...savedTransaction.toJSON(),
+      clientBalance,
+    };
+  }
+
+  async createWholesaleTransaction(
+    createTransactionDto: CreateTransactionDto,
+    user: { userId: string; role: string; email?: string; name?: string; branch?: string },
+    userAgent: string
+  ): Promise<Transaction & { clientBalance?: number }> {
+    // Validate that only registered clients can do WHOLESALE transactions
+    if (!createTransactionDto.clientId) {
+      throw new BadRequestException('WHOLESALE transactions are only allowed for registered clients');
+    }
+
+    // Validate that items are provided for WHOLESALE transactions
+    if (!createTransactionDto.items || createTransactionDto.items.length === 0) {
+      throw new BadRequestException('Items are required for WHOLESALE transactions');
+    }
+
+    let clientId: Types.ObjectId | undefined = undefined;
+
+    // Get registered client
+    const client = await this.clientsService.findById(createTransactionDto.clientId);
+    
+    // Check if client is blocked/suspended
+    if (!client.isActive) {
+      throw new BadRequestException(
+        `Transaction blocked: Client "${client.name}" is currently suspended. Please contact admin to reactivate this client.`
+      );
+    }
+    
+    clientId = (client as any)._id;
+
+    // Validate mutual exclusivity of loading charges
+    const loadingCharge = createTransactionDto.loading || 0;
+    const loadingAndOffloadingCharge = createTransactionDto.loadingAndOffloading || 0;
+    
+    if (loadingCharge > 0 && loadingAndOffloadingCharge > 0) {
+      throw new BadRequestException(
+        'Cannot have both "loading" and "loadingAndOffloading" charges in the same transaction. Please use only one.'
+      );
+    }
+
+    // Process items and calculate totals - NO STOCK OPERATIONS
+    let subtotal = 0;
+    const processedItems = await Promise.all(
+      createTransactionDto.items.map(async (item) => {
+        const product = await this.productsService.findById(item.productId);
+
+        // Validate that product is cement
+        const category = await this.categoriesService.findById(product.categoryId.toString());
+        if (category.name.toLowerCase() !== 'cement') {
+          throw new BadRequestException(
+            `WHOLESALE transactions are only allowed for cement products. "${product.name}" is not a cement product.`
+          );
+        }
+
+        // Validate unit matches product category
+        if (item.unit !== product.unit) {
+          throw new BadRequestException(
+            `Invalid unit ${item.unit} for product ${product.name}. This product only accepts ${product.unit}`,
+          );
+        }
+
+        // For WHOLESALE, wholesalePrice is required
+        if (!item.wholesalePrice || item.wholesalePrice <= 0) {
+          throw new BadRequestException(
+            `Wholesale price is required and must be greater than 0 for product ${product.name}`
+          );
+        }
+
+        // Calculate price using wholesale price (NO STOCK VALIDATION)
+        const price = item.wholesalePrice * item.quantity;
+        const itemSubtotal = price - (item.discount || 0);
+        subtotal += itemSubtotal;
+
+        return {
+          productId: product._id,
+          productName: product.name,
+          quantity: item.quantity,
+          unit: item.unit,
+          unitPrice: item.wholesalePrice, // Use wholesale price as unit price
+          discount: item.discount || 0,
+          subtotal: itemSubtotal,
+          wholesalePrice: item.wholesalePrice, // Store wholesale price separately
+        };
+      }),
+    );
+
+    // Calculate total with additional charges
+    const discount = createTransactionDto.discount || 0;
+    const transportFare = createTransactionDto.transportFare || 0;
+    const loadingAndOffloading = createTransactionDto.loadingAndOffloading || 0;
+    const loading = createTransactionDto.loading || 0;
+    
+    const total = subtotal - discount + transportFare + loadingAndOffloading + loading;
+    const amountPaid = createTransactionDto.amountPaid || 0;
+
+    // Determine status based on client balance and payment (same logic as PURCHASE/PICKUP)
+    let status = 'PENDING';
+    const clientBalance = client.balance || 0;
+    const totalAvailable = amountPaid + clientBalance;
+
+    if (totalAvailable >= total) {
+      // Payment is sufficient - no debt created (PURCHASE-like)
+      status = 'COMPLETED';
+    } else {
+      // Will create debt (PICKUP-like)
+      status = 'COMPLETED';
+    }
+
+    // Determine accounting date (used both for transaction.date and invoice prefix)
+    const accountingDate = createTransactionDto.date ? new Date(createTransactionDto.date) : new Date();
+
+    const transaction = new this.transactionModel({
+      invoiceNumber: await this.generateInvoiceNumber(accountingDate),
+      clientId,
+      userId: new Types.ObjectId(user.userId),
+      items: processedItems,
+      subtotal,
+      discount: createTransactionDto.discount || 0,
+      transportFare: createTransactionDto.transportFare || 0,
+      loadingAndOffloading: createTransactionDto.loadingAndOffloading || 0,
+      loading: createTransactionDto.loading || 0,
+      total,
+      amountPaid,
+      paymentMethod: createTransactionDto.paymentMethod,
+      notes: createTransactionDto.notes,
+      status,
+      branchId: createTransactionDto.branchId,
+      type: createTransactionDto.type,
+      isPickedUp: false, // WHOLESALE is not picked up by default
+      date: accountingDate,
+    });
+
+    // Save transaction with retry-on-duplicate (invoiceNumber collisions)
+    const maxSaveAttempts = 5;
+    let saveAttempt = 0;
+    let savedTransaction = null as any;
+    while (saveAttempt < maxSaveAttempts) {
+      try {
+        saveAttempt++;
+        savedTransaction = await transaction.save();
+        break;
+      } catch (err: any) {
+        // Mongo duplicate key error (look for invoiceNumber anywhere in error shape)
+        const isDuplicateInvoice =
+          err?.code === 11000 && (
+            (err.keyPattern && err.keyPattern.invoiceNumber) ||
+            (err.keyValue && err.keyValue.invoiceNumber) ||
+            (typeof err.message === 'string' && err.message.includes('invoiceNumber'))
+          );
+
+        if (isDuplicateInvoice) {
+          // regenerate invoice number and retry
+          if (saveAttempt >= maxSaveAttempts) {
+            throw new ConflictException('Duplicate entry');
+          }
+          const newInv = await this.generateInvoiceNumber(accountingDate);
+          transaction.invoiceNumber = newInv;
+          continue;
+        }
+        // rethrow other errors
+        throw err;
+      }
+    }
+
+    if (!savedTransaction) {
+      throw new ConflictException('Duplicate entry');
+    }
+
+    // NO STOCK UPDATES FOR WHOLESALE - This is the key difference
+
+    // Update client balance (same logic as PURCHASE/PICKUP)
+    try {
+      let ledgerAmount = 0;
+      let ledgerDescription = `Wholesale Invoice #${transaction.invoiceNumber}`;
+      const updatedClientBalance = client.balance || 0;
+
+      if (totalAvailable >= total) {
+        // PURCHASE-like: Payment + balance covers total
+        if (amountPaid >= total) {
+          // Paid full or more - balance untouched
+          if (amountPaid > total) {
+            // Overpaid - add excess as credit
+            const excess = amountPaid - total;
+            ledgerAmount = -excess; // Negative means adding credit
+            ledgerDescription += ` (Overpaid by ${excess} - added as credit)`;
+          } else {
+            // Paid exactly - no balance change
+            ledgerAmount = 0;
+            ledgerDescription += ` (Paid in full - balance untouched)`;
+          }
+        } else {
+          // Used balance to complete purchase
+          const neededFromBalance = total - amountPaid;
+          ledgerAmount = neededFromBalance; // Positive means deducting from balance
+          ledgerDescription += ` (Used ${neededFromBalance} from balance + ${amountPaid} payment)`;
+        }
+      } else {
+        // PICKUP-like: Will create debt
+        const debt = total - totalAvailable;
+        ledgerAmount = total - amountPaid; // This will use balance and create debt
+        ledgerDescription += ` (Used ${updatedClientBalance > 0 ? updatedClientBalance : 0} from balance, paid ${amountPaid}, debt ${debt})`;
+      }
+      
+      await this.clientsService.addTransaction(clientId.toString(), {
+        type: totalAvailable >= total ? 'PURCHASE' : 'PICKUP', // Use appropriate type for ledger
+        amount: ledgerAmount,
+        description: ledgerDescription,
+        reference: transaction._id.toString(),
+        date: transaction.date || new Date(),
+      });
+    } catch (ledgerErr) {
+      // Delete the saved transaction if ledger update fails
+      try {
+        await this.transactionModel.deleteOne({ _id: savedTransaction._id });
+      } catch (delErr) {
+        console.error('Failed to delete transaction after ledger failure', delErr);
+      }
+      throw new BadRequestException('Failed to update client ledger. Transaction aborted.');
+    }
+
+    // Log transaction creation activity
+    try {
+      await this.systemActivityLogService.createLog({
+        action: 'WHOLESALE_TRANSACTION_CREATED',
+        details: `Wholesale transaction ${savedTransaction.invoiceNumber} created for ${client.name} - Total: ${total}`,
+        performedBy: user.email || user.name || user.userId,
+        role: user.role,
+        device: extractDeviceInfo(userAgent) || "",
+      });
+    } catch (logError) {
+      console.error('Failed to log wholesale transaction creation:', logError);
+      // Don't fail transaction creation if logging fails
+    }
+
+    // Emit real-time event for transaction creation
+    try {
+      const eventData = this.realtimeEventService.createEventData(
+        'created',
+        'transaction',
+        savedTransaction._id.toString(),
+        savedTransaction,
+        {
+          id: user.userId,
+          email: user.email || 'unknown@system.com',
+          role: user.role as UserRole,
+          branchId: createTransactionDto.branchId,
+          branch: user.branch || 'System Branch', 
+        }
+      );
+      
+      this.realtimeEventService.emitTransactionCreated(eventData);
+    } catch (realtimeError) {
+      console.error('❌ Failed to emit real-time wholesale transaction event:', realtimeError);
+      // Don't fail transaction creation if real-time event fails
+    }
+
+    // Get updated client balance
+    let finalClientBalance = 0;
+    try {
+      const updatedClient = await this.clientsService.findById(createTransactionDto.clientId);
+      finalClientBalance = updatedClient.balance || 0;
+    } catch (error) {
+      console.error('Failed to fetch updated client balance:', error);
+    }
+
+    return {
+      ...savedTransaction.toJSON(),
+      clientBalance: finalClientBalance,
+    };
+  }
+
   async findAll(query: QueryTransactionsDto): Promise<Transaction[]> {
     const filter: any = {};
 
@@ -513,6 +1008,54 @@ export class TransactionsService {
     const transaction = await this.transactionModel.findById(id);
     if (!transaction) {
       throw new NotFoundException('Transaction not found');
+    }
+
+    // Validate mutual exclusivity of loading charges if being updated
+    if (updateTransactionDto.loading !== undefined || updateTransactionDto.loadingAndOffloading !== undefined) {
+      const newLoading = updateTransactionDto.loading !== undefined ? updateTransactionDto.loading : transaction.loading;
+      const newLoadingAndOffloading = updateTransactionDto.loadingAndOffloading !== undefined 
+        ? updateTransactionDto.loadingAndOffloading 
+        : transaction.loadingAndOffloading;
+      
+      if (newLoading > 0 && newLoadingAndOffloading > 0) {
+        throw new BadRequestException(
+          'Cannot have both "loading" and "loadingAndOffloading" charges in the same transaction. Please use only one.'
+        );
+      }
+    }
+
+    // Validate that additional charges are not applied to DEPOSIT transactions
+    if (transaction.type === 'DEPOSIT') {
+      if (updateTransactionDto.transportFare || updateTransactionDto.loading || updateTransactionDto.loadingAndOffloading) {
+        throw new BadRequestException(
+          'Transport fare, loading, and loadingAndOffloading charges cannot be applied to DEPOSIT transactions.'
+        );
+      }
+    }
+
+    // Handle additional charges updates - recalculate total if any charges are updated
+    if (
+      updateTransactionDto.transportFare !== undefined ||
+      updateTransactionDto.loadingAndOffloading !== undefined ||
+      updateTransactionDto.loading !== undefined
+    ) {
+      const newTransportFare = updateTransactionDto.transportFare !== undefined 
+        ? updateTransactionDto.transportFare 
+        : transaction.transportFare;
+      const newLoadingAndOffloading = updateTransactionDto.loadingAndOffloading !== undefined 
+        ? updateTransactionDto.loadingAndOffloading 
+        : transaction.loadingAndOffloading;
+      const newLoading = updateTransactionDto.loading !== undefined 
+        ? updateTransactionDto.loading 
+        : transaction.loading;
+      
+      // Recalculate total
+      transaction.total = transaction.subtotal - transaction.discount + newTransportFare + newLoadingAndOffloading + newLoading;
+      
+      // Update the charge fields
+      transaction.transportFare = newTransportFare;
+      transaction.loadingAndOffloading = newLoadingAndOffloading;
+      transaction.loading = newLoading;
     }
 
     // Handle payment updates
@@ -670,6 +1213,26 @@ export class TransactionsService {
   ): Promise<any> {
     let clientBalance = 0;
 
+    // Validate mutual exclusivity of loading charges
+    const loadingCharge = calculateTransactionDto.loading || 0;
+    const loadingAndOffloadingCharge = calculateTransactionDto.loadingAndOffloading || 0;
+    
+    if (loadingCharge > 0 && loadingAndOffloadingCharge > 0) {
+      throw new BadRequestException(
+        'Cannot have both "loading" and "loadingAndOffloading" charges in the same transaction. Please use only one.'
+      );
+    }
+
+    // Validate that additional charges are not applied to DEPOSIT transactions
+    if (calculateTransactionDto.type === 'DEPOSIT') {
+      const transportFare = calculateTransactionDto.transportFare || 0;
+      if (transportFare > 0 || loadingCharge > 0 || loadingAndOffloadingCharge > 0) {
+        throw new BadRequestException(
+          'Transport fare, loading, and loadingAndOffloading charges cannot be applied to DEPOSIT transactions.'
+        );
+      }
+    }
+
     // Get client balance if it's a registered client
     if (calculateTransactionDto.clientId) {
       const client = await this.clientsService.findById(
@@ -696,6 +1259,59 @@ export class TransactionsService {
       }
       subtotal = calculateTransactionDto.amountPaid;
       processedItems = []; // No items for deposits
+    } else if (calculateTransactionDto.type === 'WHOLESALE') {
+      // For WHOLESALE transactions, special handling
+      if (!calculateTransactionDto.clientId) {
+        throw new BadRequestException('WHOLESALE transactions are only allowed for registered clients');
+      }
+      if (!calculateTransactionDto.items || calculateTransactionDto.items.length === 0) {
+        throw new BadRequestException('Items are required for WHOLESALE transactions');
+      }
+      
+      processedItems = await Promise.all(
+        calculateTransactionDto.items.map(async (item) => {
+          const product = await this.productsService.findById(item.productId);
+
+          // Validate that product is cement
+          const category = await this.categoriesService.findById(product.categoryId.toString());
+          if (category.name.toLowerCase() !== 'cement') {
+            throw new BadRequestException(
+              `WHOLESALE transactions are only allowed for cement products. "${product.name}" is not a cement product.`
+            );
+          }
+
+          // Validate unit matches product category
+          if (item.unit !== product.unit) {
+            throw new BadRequestException(
+              `Invalid unit ${item.unit} for product ${product.name}. This product only accepts ${product.unit}`,
+            );
+          }
+
+          // For WHOLESALE, wholesalePrice is required
+          if (!item.wholesalePrice || item.wholesalePrice <= 0) {
+            throw new BadRequestException(
+              `Wholesale price is required and must be greater than 0 for product ${product.name}`
+            );
+          }
+
+          // NO STOCK VALIDATION for WHOLESALE
+          // Calculate price using wholesale price
+          const price = item.wholesalePrice * item.quantity;
+          const itemSubtotal = price - (item.discount || 0);
+          subtotal += itemSubtotal;
+
+          return {
+            productId: product._id,
+            productName: product.name,
+            quantity: item.quantity,
+            unit: item.unit,
+            unitPrice: item.wholesalePrice,
+            discount: item.discount || 0,
+            subtotal: itemSubtotal,
+            wholesalePrice: item.wholesalePrice,
+          };
+        }),
+      );
     } else {
       // For PURCHASE and PICKUP, process items normally
       if (!calculateTransactionDto.items || calculateTransactionDto.items.length === 0) {
@@ -738,13 +1354,22 @@ export class TransactionsService {
       );
     }
 
-    const total = subtotal - (calculateTransactionDto.discount || 0);
+    // Calculate total with additional charges
+    const discount = calculateTransactionDto.discount || 0;
+    const transportFare = calculateTransactionDto.transportFare || 0;
+    const loadingAndOffloading = calculateTransactionDto.loadingAndOffloading || 0;
+    const loading = calculateTransactionDto.loading || 0;
+    
+    const total = subtotal - discount + transportFare + loadingAndOffloading + loading;
 
     // Calculate required payment based on client type and transaction type
     let requiredPayment = total;
     const paymentDetails = {
       subtotal,
       discount: calculateTransactionDto.discount || 0,
+      transportFare: calculateTransactionDto.transportFare || 0,
+      loadingAndOffloading: calculateTransactionDto.loadingAndOffloading || 0,
+      loading: calculateTransactionDto.loading || 0,
       total,
       clientBalance,
       requiredPayment,
@@ -757,16 +1382,18 @@ export class TransactionsService {
       if (calculateTransactionDto.type === 'DEPOSIT') {
         requiredPayment = total;
         paymentDetails.message = `Deposit amount: ${total}`;
-      } else if (calculateTransactionDto.type === 'PURCHASE') {
-        // PURCHASE: Any payment where (amountPaid + balance) >= total
+      } else if (calculateTransactionDto.type === 'PURCHASE' || calculateTransactionDto.type === 'WHOLESALE') {
+        // PURCHASE/WHOLESALE: Any payment where (amountPaid + balance) >= total
         // Minimum payment needed = total - balance (or 0 if balance covers all)
         const minimumPayment = Math.max(0, total - clientBalance);
         requiredPayment = minimumPayment;
 
+        const transactionTypeLabel = calculateTransactionDto.type === 'WHOLESALE' ? 'WHOLESALE' : 'PURCHASE';
+
         if (clientBalance >= total) {
-          paymentDetails.message = `PURCHASE: You can pay 0 (balance ${clientBalance} covers all) up to any amount. Excess becomes credit.`;
+          paymentDetails.message = `${transactionTypeLabel}: You can pay 0 (balance ${clientBalance} covers all) up to any amount. Excess becomes credit.`;
         } else {
-          paymentDetails.message = `PURCHASE: Minimum payment ${minimumPayment} (to avoid debt). You can pay more, excess becomes credit. Current balance: ${clientBalance}`;
+          paymentDetails.message = `${transactionTypeLabel}: Minimum payment ${minimumPayment} (to avoid debt). You can pay more, excess becomes credit. Current balance: ${clientBalance}`;
         }
         paymentDetails.canUseCreditBalance = true;
       } else if (calculateTransactionDto.type === 'PICKUP') {
@@ -776,9 +1403,12 @@ export class TransactionsService {
         paymentDetails.message = `PICKUP: Pay any amount less than ${total - clientBalance} to create debt. Balance: ${clientBalance}`;
       }
     } else {
-      // Walk-in client - not allowed for deposits
+      // Walk-in client - not allowed for deposits or wholesale
       if (calculateTransactionDto.type === 'DEPOSIT') {
         throw new BadRequestException('Deposit transactions are only allowed for registered clients.');
+      }
+      if (calculateTransactionDto.type === 'WHOLESALE') {
+        throw new BadRequestException('WHOLESALE transactions are only allowed for registered clients.');
       }
       paymentDetails.message = `Walk-in client must pay full amount: ${total}`;
     }
@@ -856,7 +1486,7 @@ export class TransactionsService {
   // Revenue Analytics Methods
   async getTotalRevenue(branchId?: string, startDate?: Date, endDate?: Date) {
     const filter: any = {
-      type: { $in: ['PURCHASE', 'PICKUP', 'DEPOSIT'] },
+      type: { $in: ['PURCHASE', 'PICKUP', 'DEPOSIT', 'WHOLESALE'] },
       status: { $ne: 'CANCELLED' }
     };
 
@@ -971,7 +1601,7 @@ export class TransactionsService {
     }
 
       const filter: any = {
-      type: { $in: ['PURCHASE', 'PICKUP', 'DEPOSIT'] },
+      type: { $in: ['PURCHASE', 'PICKUP', 'DEPOSIT', 'WHOLESALE'] },
       status: { $ne: 'CANCELLED' },
       date: { $gte: dateRange.start, $lt: dateRange.end }
     };
