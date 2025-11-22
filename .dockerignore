@@ -1,0 +1,43 @@
+# Dependencies - will be installed fresh inside container
+node_modules
+
+# Build output - will be built fresh inside container
+dist
+
+# Git files - not needed in container
+.git
+.gitignore
+
+# Environment files - secrets should NOT be in image
+.env
+.env.*
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Test files - not needed in production
+test
+*.spec.ts
+coverage
+
+# Documentation - not needed in container
+README.md
+REALTIME_FRONTEND_GUIDE.md
+*.md
+
+# Docker files - no need to copy Docker config into image
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# OS files
+.DS_Store
+Thumbs.db

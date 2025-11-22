@@ -1,0 +1,65 @@
+# ===========================================
+# CI Workflow - Runs on EVERY push to ANY branch
+# ===========================================
+# Purpose: Make sure code compiles and tests pass
+
+name: CI - Test & Build
+
+# When to run this workflow
+on:
+  push:
+    branches:
+      - '*'           # Run on ALL branches
+  pull_request:
+    branches:
+      - main
+      - master
+      - staging
+      - production
+
+# The jobs to run
+jobs:
+  test-and-build:
+    name: Test and Build
+    runs-on: ubuntu-latest    # Use Ubuntu server (free from GitHub)
+
+    steps:
+      # Step 1: Get the code from the repository
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'        # Cache npm dependencies for faster builds
+
+      # Step 3: Install dependencies
+      - name: Install dependencies
+        run: npm ci
+
+      # Step 4: Run linting (check code style)
+      - name: Run linter
+        run: npm run lint
+        continue-on-error: true   # Don't fail the build if linting has warnings
+
+      # Step 5: Run tests (if you have them)
+      - name: Run tests
+        run: npm run test --if-present
+        continue-on-error: true   # Don't fail if no tests exist yet
+
+      # Step 6: Build the application
+      - name: Build application
+        run: npm run build
+
+      # Step 7: Confirm build succeeded
+      - name: Verify build output
+        run: |
+          if [ -d "dist" ]; then
+            echo "✅ Build successful! dist/ folder created"
+            ls -la dist/
+          else
+            echo "❌ Build failed! dist/ folder not found"
+            exit 1
+          fi

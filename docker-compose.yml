@@ -1,0 +1,82 @@
+# Docker Compose version
+version: '3.8'
+
+# Services = containers that will run
+services:
+
+  # ===========================================
+  # SERVICE 1: Your NestJS Application
+  # ===========================================
+  app:
+    # Build using our Dockerfile
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    # Container name (optional, makes it easier to identify)
+    container_name: mfon-obong-app
+
+    # Port mapping: HOST:CONTAINER
+    # Access the app at localhost:3000
+    ports:
+      - "3000:3000"
+
+    # Environment variables for the app
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - MONGODB_URI=mongodb://mongo:27017/mfon-obong
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRATION=${JWT_EXPIRATION}
+      - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}
+      - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}
+      - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}
+
+    # Wait for MongoDB to be ready before starting
+    depends_on:
+      - mongo
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Connect to our custom network
+    networks:
+      - mfon-obong-network
+
+  # ===========================================
+  # SERVICE 2: MongoDB Database
+  # ===========================================
+  mongo:
+    # Use official MongoDB image
+    image: mongo:7.0
+
+    # Container name
+    container_name: mfon-obong-mongo
+
+    # Port mapping (optional - for external access/debugging)
+    ports:
+      - "27017:27017"
+
+    # Persist data even if container is deleted
+    volumes:
+      - mongo-data:/data/db
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Connect to our custom network
+    networks:
+      - mfon-obong-network
+
+# ===========================================
+# NETWORKS: Allow containers to communicate
+# ===========================================
+networks:
+  mfon-obong-network:
+    driver: bridge
+
+# ===========================================
+# VOLUMES: Persist data outside containers
+# ===========================================
+volumes:
+  mongo-data:
