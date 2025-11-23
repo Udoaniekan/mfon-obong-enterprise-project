@@ -49,18 +49,6 @@ export class TransactionItemDto {
   wholesalePrice?: number;
 }
 
-export class ReturnItemDto {
-  @IsMongoId()
-  productId: string;
-
-  @IsNumber()
-  @Min(0)
-  quantity: number;
-
-  @IsString()
-  unit: string;
-}
-
 // ...existing code...
 
 export enum TransactionType {
@@ -141,12 +129,6 @@ export class CreateTransactionDto {
   @IsOptional()
   @IsString()
   reason?: string;
-
-  @IsOptional()
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => ReturnItemDto)
-  returnedItems?: ReturnItemDto[];
 
   @IsOptional()
   @IsNumber()

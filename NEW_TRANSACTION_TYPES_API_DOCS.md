@@ -26,7 +26,7 @@ Requires JWT token. Allowed roles: `SUPER_ADMIN`, `ADMIN`, `MAINTAINER`, `STAFF`
   "reason": "Defective product",
   "clientId": "64f8a1234567890123456789",
   "branchId": "64f8a1234567890123456789",
-  "returnedItems": [
+  "items": [
     {
       "productId": "64f8a1234567890123456789",
       "quantity": 5,
@@ -43,7 +43,7 @@ Requires JWT token. Allowed roles: `SUPER_ADMIN`, `ADMIN`, `MAINTAINER`, `STAFF`
 - `type`: Must be `"RETURN"`
 - `referenceTransactionId`: ID of the original transaction being returned
 - `reason`: Explanation for the return
-- `returnedItems`: Array of items being returned
+- `items`: Array of items being returned (same field as other transactions)
   - `productId`: Product ID
   - `quantity`: Number of items being returned
   - `unit`: Unit of measurement
@@ -101,6 +101,13 @@ Requires JWT token. Allowed roles: `SUPER_ADMIN`, `ADMIN`, `MAINTAINER`, `STAFF`
 {
   "statusCode": 400,
   "message": "referenceTransactionId is required for RETURN transactions"
+}
+```
+
+```json
+{
+  "statusCode": 400,
+  "message": "items are required for RETURN transactions"
 }
 ```
 
@@ -369,7 +376,7 @@ enum TransactionType {
 ### RETURN Specific:
 - `400`: "referenceTransactionId is required"
 - `400`: "reason is required"
-- `400`: "returnedItems are required"
+- `400`: "items are required"
 - `400`: "actualAmountReturned is required and must be >= 0"
 - `404`: "Original transaction not found"
 - `400`: "Cannot create a return for a DEPOSIT or RETURN transaction"
