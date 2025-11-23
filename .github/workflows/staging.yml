@@ -15,7 +15,7 @@ on:
 # Environment variables used across jobs
 env:
   DOCKER_IMAGE: udoaniekan/mfon-obong-enterprise
-  RENDER_SERVICE_ID: srv-d3kj28bipnbc73fu2sp0
+  RENDER_SERVICE_ID: srv-d4hk160gjchc73etggtg
 
 jobs:
   # ===========================================
