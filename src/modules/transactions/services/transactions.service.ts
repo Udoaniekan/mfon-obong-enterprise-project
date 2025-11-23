@@ -492,8 +492,8 @@ export class TransactionsService {
     if (!createTransactionDto.reason) {
       throw new BadRequestException('reason is required for RETURN transactions');
     }
-    if (!createTransactionDto.returnedItems || createTransactionDto.returnedItems.length === 0) {
-      throw new BadRequestException('returnedItems are required for RETURN transactions');
+    if (!createTransactionDto.items || createTransactionDto.items.length === 0) {
+      throw new BadRequestException('items are required for RETURN transactions');
     }
     if (createTransactionDto.actualAmountReturned === undefined || createTransactionDto.actualAmountReturned < 0) {
       throw new BadRequestException('actualAmountReturned is required and must be >= 0 for RETURN transactions');
@@ -514,7 +514,7 @@ export class TransactionsService {
     let totalRefundedAmount = 0;
     const processedReturnedItems: any[] = [];
 
-    for (const returnItem of createTransactionDto.returnedItems) {
+    for (const returnItem of createTransactionDto.items) {
       // Find the item in the original transaction
       const originalItem = originalTransaction.items.find(
         (item: any) => item.productId.toString() === returnItem.productId
@@ -560,10 +560,12 @@ export class TransactionsService {
         productName: originalItem.productName,
         quantity: returnItem.quantity,
         unit: returnItem.unit,
+        unitPrice: refundPricePerUnit,
         originalUnitPrice: originalPricePerUnit,
         currentUnitPrice: currentPricePerUnit,
         refundUnitPrice: refundPricePerUnit,
         subtotal: itemRefundAmount,
+        discount: 0,
       });
 
       // Add returned quantity back to stock
