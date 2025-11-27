@@ -15,7 +15,7 @@ on:
 # Environment variables used across jobs
 env:
   DOCKER_IMAGE: udoaniekan/mfon-obong-enterprise
-  RENDER_SERVICE_ID: srv-d3kj28bipnbc73fu2sp0
+  RENDER_SERVICE_ID: srv-d4hk160gjchc73etggtg
 
 jobs:
   # ===========================================
@@ -95,12 +95,22 @@ jobs:
       - name: Deploy to Render
         run: |
           echo "🚀 Triggering deployment to Render..."
-          curl -X POST \
+          echo "Service ID: ${{ env.RENDER_SERVICE_ID }}"
+
+          RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST \
             "https://api.render.com/v1/services/${{ env.RENDER_SERVICE_ID }}/deploys" \
-            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d '{"clearCache": false}'
-          echo "✅ Deployment triggered successfully!"
+            -H "Accept: application/json" \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}")
+
+          echo "Response: $RESPONSE"
+
+          HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS" | cut -d: -f2)
+
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
+            echo "✅ Deployment triggered successfully!"
+          else
+            echo "❌ Deployment may have failed. Check Render dashboard."
+          fi
 
       - name: Deployment Summary
         run: |
