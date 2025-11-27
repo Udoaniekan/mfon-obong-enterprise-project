@@ -209,6 +209,7 @@ export class AuthService {
           name: payload.name,
           branch: payload.branch,
           branchId: payload.branchId,
+          profilePicture: user.profilePicture,
         },
       };
     } catch (error) {
@@ -369,6 +370,7 @@ export class AuthService {
           name: payload.name,
           branch: payload.branch,
           branchId: payload.branchId,
+          profilePicture: user.profilePicture,
         },
       };
     } catch (error) {

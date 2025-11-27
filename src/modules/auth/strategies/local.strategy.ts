@@ -94,6 +94,7 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
         name: user.name,
         branch: user.branch,
         branchId: user.branchId,
+        profilePicture: user.profilePicture,
       };
     } catch (error) {
       if (error instanceof ForbiddenException) {
