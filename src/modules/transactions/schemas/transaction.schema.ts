@@ -129,6 +129,10 @@ export class Transaction {
 
   @Prop({ type: Number })
   actualAmountReturned?: number;
+
+  // Store client balance snapshot after this transaction (for historical accuracy)
+  @Prop({ type: Number })
+  clientBalanceAfterTransaction?: number;
 }
 
 export const TransactionSchema = SchemaFactory.createForClass(Transaction);

@@ -461,7 +461,7 @@ export class TransactionsService {
       // Don't fail transaction creation if real-time event fails
     }
 
-    // Get updated client balance for registered clients
+    // Get updated client balance for registered clients and save it to the transaction
     let clientBalance = null;
     if (clientId) {
       try {
@@ -469,6 +469,12 @@ export class TransactionsService {
           createTransactionDto.clientId,
         );
         clientBalance = updatedClient.balance || 0;
+        
+        // Update the transaction document with the balance snapshot
+        await this.transactionModel.updateOne(
+          { _id: savedTransaction._id },
+          { clientBalanceAfterTransaction: clientBalance }
+        );
       } catch (error) {
         console.error('Failed to fetch updated client balance:', error);
       }
@@ -477,6 +483,7 @@ export class TransactionsService {
     return {
       ...savedTransaction.toJSON(),
       clientBalance,
+      clientBalanceAfterTransaction: clientBalance,
     };
   }
 
@@ -601,6 +608,7 @@ export class TransactionsService {
       actualAmountReturned: createTransactionDto.actualAmountReturned,
       date: accountingDate,
       notes: createTransactionDto.notes,
+      clientBalanceAfterTransaction: null, // Will be updated after client ledger update
     });
 
     // Save the return transaction
@@ -620,6 +628,12 @@ export class TransactionsService {
       try {
         const client = await this.clientsService.findById(originalTransaction.clientId.toString());
         clientBalance = client.balance || 0;
+        
+        // Update the transaction document with the balance snapshot
+        await this.transactionModel.updateOne(
+          { _id: savedTransaction._id },
+          { clientBalanceAfterTransaction: clientBalance }
+        );
       } catch (error) {
         console.error('Failed to fetch updated client balance:', error);
       }
@@ -662,6 +676,7 @@ export class TransactionsService {
     return {
       ...savedTransaction.toJSON(),
       clientBalance,
+      clientBalanceAfterTransaction: clientBalance,
     };
   }
 
@@ -794,6 +809,7 @@ export class TransactionsService {
       type: createTransactionDto.type,
       isPickedUp: false, // WHOLESALE is not picked up by default
       date: accountingDate,
+      clientBalanceAfterTransaction: null, // Will be updated after client ledger update
     });
 
     // Save transaction with retry-on-duplicate (invoiceNumber collisions)
@@ -920,11 +936,17 @@ export class TransactionsService {
       // Don't fail transaction creation if real-time event fails
     }
 
-    // Get updated client balance
+    // Get updated client balance and save it to the transaction
     let finalClientBalance = 0;
     try {
       const updatedClient = await this.clientsService.findById(createTransactionDto.clientId);
       finalClientBalance = updatedClient.balance || 0;
+      
+      // Update the transaction document with the balance snapshot
+      await this.transactionModel.updateOne(
+        { _id: savedTransaction._id },
+        { clientBalanceAfterTransaction: finalClientBalance }
+      );
     } catch (error) {
       console.error('Failed to fetch updated client balance:', error);
     }
@@ -932,6 +954,7 @@ export class TransactionsService {
     return {
       ...savedTransaction.toJSON(),
       clientBalance: finalClientBalance,
+      clientBalanceAfterTransaction: finalClientBalance,
     };
   }
 
