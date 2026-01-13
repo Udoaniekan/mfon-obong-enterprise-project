@@ -256,6 +256,7 @@ export class TransactionsService {
       isPickedUp: createTransactionDto.type === 'PICKUP',
       // Use provided accounting date (backdate) or default to now
       date: accountingDate,
+      clientBalanceAfterTransaction: null, // Will be updated after client ledger update
     });
 
     // Save transaction with retry-on-duplicate (invoiceNumber collisions)
