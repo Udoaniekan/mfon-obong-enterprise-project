@@ -36,7 +36,7 @@ export class Transaction {
 
   @Prop({
     type: String,
-    enum: ['DEPOSIT', 'PURCHASE', 'PICKUP', 'RETURN', 'WHOLESALE'],
+    enum: ['DEPOSIT', 'PURCHASE', 'RETURN', 'WHOLESALE'],
     required: true,
   })
   type: string;

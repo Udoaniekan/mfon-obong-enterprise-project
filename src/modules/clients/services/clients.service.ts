@@ -278,16 +278,20 @@ export class ClientsService {
       case 'DEPOSIT':
         client.balance += transaction.amount;
         break;
-      case 'PURCHASE': {
-        // For PURCHASE, use up any positive balance, the rest is paid in cash
-        const amountFromBalance = Math.min(client.balance, transaction.amount);
-        client.balance -= amountFromBalance;
-        // After this, balance should never go negative for PURCHASE
-        if (client.balance < 0) client.balance = 0;
+      case 'PURCHASE':
+        // PURCHASE can now go negative (debt allowed for registered clients)
+        client.balance -= transaction.amount;
         break;
-      }
       case 'PICKUP':
-        // PICKUP can go negative
+        // PICKUP legacy support - treat same as PURCHASE (can go negative)
+        client.balance -= transaction.amount;
+        break;
+      case 'RETURN':
+        // RETURN adds refund amount back to client balance
+        client.balance += transaction.amount;
+        break;
+      case 'WHOLESALE':
+        // WHOLESALE deducts from balance (same as PURCHASE)
         client.balance -= transaction.amount;
         break;
     }
@@ -380,7 +384,6 @@ export class ClientsService {
     const summary = {
       totalDeposits: 0,
       totalPurchases: 0,
-      totalPickups: 0,
       currentBalance: client.balance,
       transactions: transactions,
     };
@@ -391,9 +394,6 @@ export class ClientsService {
           break;
         case 'PURCHASE':
           summary.totalPurchases += t.amount;
-          break;
-        case 'PICKUP':
-          summary.totalPickups += t.amount;
           break;
       }
     });
@@ -432,7 +432,7 @@ export class ClientsService {
     
     let totalSpent = 0;
     client.transactions.forEach((transaction) => {
-      if (transaction.type === 'PURCHASE' || transaction.type === 'PICKUP') {
+      if (transaction.type === 'PURCHASE') {
         totalSpent += transaction.amount;
       }
     });

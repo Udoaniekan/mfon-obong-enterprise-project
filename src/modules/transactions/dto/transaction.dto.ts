@@ -54,7 +54,6 @@ export class TransactionItemDto {
 export enum TransactionType {
   DEPOSIT = 'DEPOSIT',
   PURCHASE = 'PURCHASE',
-  PICKUP = 'PICKUP',
   RETURN = 'RETURN',
   WHOLESALE = 'WHOLESALE',
 }

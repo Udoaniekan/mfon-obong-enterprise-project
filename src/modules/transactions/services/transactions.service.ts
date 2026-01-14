@@ -121,9 +121,9 @@ export class TransactionsService {
       subtotal = createTransactionDto.amountPaid;
       processedItems = []; // No items for deposits
     } else {
-      // For PURCHASE and PICKUP, process items normally
+      // For PURCHASE, process items normally
       if (!createTransactionDto.items || createTransactionDto.items.length === 0) {
-        throw new BadRequestException('Items are required for PURCHASE and PICKUP transactions');
+        throw new BadRequestException('Items are required for PURCHASE transactions');
       }
       
       processedItems = await Promise.all(
@@ -183,33 +183,9 @@ export class TransactionsService {
         // Deposit transaction - always completed, no items validation needed
         status = 'COMPLETED';
       } else if (type === 'PURCHASE') {
-        // PURCHASE: Any transaction that will NOT result in debt
-        // (amountPaid + balance) >= total
-        const totalAvailable = amountPaid + clientBalance;
-
-        if (totalAvailable >= total) {
-          // Payment is sufficient - no debt created
-          status = 'COMPLETED';
-        } else {
-          // Would create debt - reject
-          throw new BadRequestException(
-            `Insufficient funds for PURCHASE. Total: ${total}, Amount Paid: ${amountPaid}, Balance: ${clientBalance}. You need at least ${total - clientBalance - amountPaid} more to complete this purchase without going into debt.`
-          );
-        }
-      } else if (type === 'PICKUP') {
-        // PICKUP: Any transaction that WILL result in debt
-        // (amountPaid + balance) < total
-        const totalAvailable = amountPaid + clientBalance;
-
-        if (totalAvailable < total) {
-          // Will create debt - this is valid for PICKUP
-          status = 'COMPLETED';
-        } else {
-          // Would not create debt - should be PURCHASE instead
-          throw new BadRequestException(
-            `This transaction should be a PURCHASE, not a PICKUP. The payment (${amountPaid}) + balance (${clientBalance}) covers the total (${total}). PICKUP is only for transactions that result in debt.`
-          );
-        }
+        // PURCHASE: Registered clients have full flexibility - can go into debt
+        // Balance can go negative if (amountPaid + balance) < total
+        status = 'COMPLETED';
       }
     } else {
       // Walk-in client - STRICT payment validation (not allowed for deposits)
@@ -253,7 +229,7 @@ export class TransactionsService {
       status,
       branchId: createTransactionDto.branchId,
       type: createTransactionDto.type,
-      isPickedUp: createTransactionDto.type === 'PICKUP',
+      isPickedUp: false,
       // Use provided accounting date (backdate) or default to now
       date: accountingDate,
       clientBalanceAfterTransaction: null, // Will be updated after client ledger update
@@ -333,18 +309,17 @@ export class TransactionsService {
 
     // Update client balance only for registered clients
     if (clientId) {
-      let ledgerType: 'DEPOSIT' | 'PICKUP' | 'PURCHASE';
-      if (createTransactionDto.type === 'PICKUP') {
-        ledgerType = 'PICKUP';
-      } else if (createTransactionDto.type === 'DEPOSIT') {
+      let ledgerType: 'DEPOSIT' | 'PURCHASE';
+      if (createTransactionDto.type === 'DEPOSIT') {
         ledgerType = 'DEPOSIT';
       } else {
         ledgerType = 'PURCHASE';
       }
       
+      let ledgerAmount = 0;
+      let ledgerDescription = `Invoice #${transaction.invoiceNumber}`;
+      
       try {
-        let ledgerAmount = 0;
-        let ledgerDescription = `Invoice #${transaction.invoiceNumber}`;
         const client = await this.clientsService.findById(clientId.toString());
         const clientBalance = client.balance || 0;
 
@@ -355,38 +330,29 @@ export class TransactionsService {
           ledgerAmount = amountPaid;
           ledgerDescription = `Deposit of ${amountPaid} added to account`;
         }
-        // For PURCHASE transactions: (amountPaid + balance) >= total
+        // For PURCHASE transactions: Full flexibility - can create debt
         else if (createTransactionDto.type === 'PURCHASE') {
-          const totalAvailable = amountPaid + clientBalance;
-
-          if (amountPaid >= total) {
-            // Paid full or more - balance untouched
-            if (amountPaid > total) {
-              // Overpaid - add excess as credit
-              const excess = amountPaid - total;
-              ledgerAmount = -excess; // Negative means adding credit
-              ledgerDescription += ` (Overpaid by ${excess} - added as credit)`;
-            } else {
-              // Paid exactly - no balance change
-              ledgerAmount = 0;
-              ledgerDescription += ` (Paid in full - balance untouched)`;
-            }
+          // Calculate how much to deduct/add to balance
+          // ledgerAmount = total - amountPaid (what needs to come from/go to balance)
+          ledgerAmount = total - amountPaid;
+          
+          if (amountPaid > total) {
+            // Overpaid - add excess as credit (negative ledgerAmount adds to balance)
+            const excess = amountPaid - total;
+            ledgerDescription += ` (Overpaid by ${excess} - added as credit)`;
+          } else if (amountPaid === total) {
+            // Paid exactly - no balance change
+            ledgerDescription += ` (Paid in full - balance untouched)`;
           } else {
-            // Used balance to complete purchase
-            // Deduct only what's needed from balance
-            const neededFromBalance = total - amountPaid;
-            ledgerAmount = neededFromBalance; // Positive means deducting from balance
-            ledgerDescription += ` (Used ${neededFromBalance} from balance + ${amountPaid} payment)`;
+            // Underpaid - deduct from balance (can go negative/debt)
+            const fromBalance = total - amountPaid;
+            const resultingBalance = clientBalance - fromBalance;
+            if (resultingBalance < 0) {
+              ledgerDescription += ` (Paid ${amountPaid}, used ${clientBalance > 0 ? clientBalance : 0} from balance, debt ${Math.abs(resultingBalance)})`;
+            } else {
+              ledgerDescription += ` (Used ${fromBalance} from balance + ${amountPaid} payment)`;
+            }
           }
-        } else if (createTransactionDto.type === 'PICKUP') {
-          // PICKUP: (amountPaid + balance) < total - creates debt
-          // First, use all available balance, then create debt
-          const totalAvailable = amountPaid + clientBalance;
-          const debt = total - totalAvailable;
-
-          // Deduct all balance and add the debt
-          ledgerAmount = total - amountPaid; // This will use balance and create debt
-          ledgerDescription += ` (Used ${clientBalance > 0 ? clientBalance : 0} from balance, paid ${amountPaid}, debt ${debt})`;
         }
         
         await this.clientsService.addTransaction(clientId.toString(), {
@@ -397,6 +363,15 @@ export class TransactionsService {
           date: transaction.date || new Date(),
         });
       } catch (ledgerErr) {
+        // Log the actual error for debugging
+        console.error('❌ Client ledger update failed:', ledgerErr);
+        console.error('Ledger details:', {
+          clientId: clientId.toString(),
+          ledgerType,
+          ledgerAmount,
+          ledgerDescription,
+        });
+        
         // Attempt to revert stock only if it was updated
         if (createTransactionDto.type !== 'DEPOSIT') {
           for (const upd of updatedProducts) {
@@ -417,7 +392,7 @@ export class TransactionsService {
         } catch (delErr) {
           console.error('Failed to delete transaction after ledger failure', delErr);
         }
-        throw new BadRequestException('Failed to update client ledger. Transaction aborted.');
+        throw new BadRequestException(`Failed to update client ledger: ${ledgerErr.message}. Transaction aborted.`);
       }
     }
 
@@ -775,7 +750,7 @@ export class TransactionsService {
     const total = subtotal - discount + transportFare + loadingAndOffloading + loading;
     const amountPaid = createTransactionDto.amountPaid || 0;
 
-    // Determine status based on client balance and payment (same logic as PURCHASE/PICKUP)
+    // Determine status based on client balance and payment (PURCHASE allows debt)
     let status = 'PENDING';
     const clientBalance = client.balance || 0;
     const totalAvailable = amountPaid + clientBalance;
@@ -784,7 +759,7 @@ export class TransactionsService {
       // Payment is sufficient - no debt created (PURCHASE-like)
       status = 'COMPLETED';
     } else {
-      // Will create debt (PICKUP-like)
+      // Will create debt (PURCHASE allows this for registered clients)
       status = 'COMPLETED';
     }
 
@@ -851,7 +826,7 @@ export class TransactionsService {
 
     // NO STOCK UPDATES FOR WHOLESALE - This is the key difference
 
-    // Update client balance (same logic as PURCHASE/PICKUP)
+    // Update client balance (PURCHASE allows debt for registered clients)
     try {
       let ledgerAmount = 0;
       let ledgerDescription = `Wholesale Invoice #${transaction.invoiceNumber}`;
@@ -878,14 +853,14 @@ export class TransactionsService {
           ledgerDescription += ` (Used ${neededFromBalance} from balance + ${amountPaid} payment)`;
         }
       } else {
-        // PICKUP-like: Will create debt
+        // PURCHASE: Will create debt (allowed for registered clients)
         const debt = total - totalAvailable;
         ledgerAmount = total - amountPaid; // This will use balance and create debt
         ledgerDescription += ` (Used ${updatedClientBalance > 0 ? updatedClientBalance : 0} from balance, paid ${amountPaid}, debt ${debt})`;
       }
       
       await this.clientsService.addTransaction(clientId.toString(), {
-        type: totalAvailable >= total ? 'PURCHASE' : 'PICKUP', // Use appropriate type for ledger
+        type: 'PURCHASE', // WHOLESALE uses PURCHASE ledger type
         amount: ledgerAmount,
         description: ledgerDescription,
         reference: transaction._id.toString(),
@@ -1105,7 +1080,7 @@ export class TransactionsService {
       await this.clientsService.addTransaction(
         transaction.clientId.toString(),
         {
-          type: 'PICKUP',
+          type: 'PURCHASE',
           amount: transaction.total,
           description: `Pickup for Invoice #${transaction.invoiceNumber}`,
           reference: transaction._id.toString(),
@@ -1339,9 +1314,9 @@ export class TransactionsService {
         }),
       );
     } else {
-      // For PURCHASE and PICKUP, process items normally
+      // For PURCHASE, process items normally
       if (!calculateTransactionDto.items || calculateTransactionDto.items.length === 0) {
-        throw new BadRequestException('Items are required for PURCHASE and PICKUP transactions');
+        throw new BadRequestException('Items are required for PURCHASE transactions');
       }
       
       processedItems = await Promise.all(
@@ -1419,14 +1394,10 @@ export class TransactionsService {
         if (clientBalance >= total) {
           paymentDetails.message = `${transactionTypeLabel}: You can pay 0 (balance ${clientBalance} covers all) up to any amount. Excess becomes credit.`;
         } else {
-          paymentDetails.message = `${transactionTypeLabel}: Minimum payment ${minimumPayment} (to avoid debt). You can pay more, excess becomes credit. Current balance: ${clientBalance}`;
+          const shortfall = total - clientBalance;
+          paymentDetails.message = `${transactionTypeLabel}: You can pay any amount from 0 to ${total}. Paying less than ${shortfall} will create debt. Current balance: ${clientBalance}`;
         }
         paymentDetails.canUseCreditBalance = true;
-      } else if (calculateTransactionDto.type === 'PICKUP') {
-        // PICKUP: Only for transactions that will create debt
-        // Any payment where (amountPaid + balance) < total
-        requiredPayment = 0; // No minimum - can pay 0 if going into debt
-        paymentDetails.message = `PICKUP: Pay any amount less than ${total - clientBalance} to create debt. Balance: ${clientBalance}`;
       }
     } else {
       // Walk-in client - not allowed for deposits or wholesale
@@ -1512,7 +1483,7 @@ export class TransactionsService {
   // Revenue Analytics Methods
   async getTotalRevenue(branchId?: string, startDate?: Date, endDate?: Date) {
     const filter: any = {
-      type: { $in: ['PURCHASE', 'PICKUP', 'DEPOSIT', 'WHOLESALE'] },
+      type: { $in: ['PURCHASE', 'DEPOSIT', 'WHOLESALE'] },
       status: { $ne: 'CANCELLED' }
     };
 
@@ -1570,7 +1541,7 @@ export class TransactionsService {
     }
 
     const filter: any = {
-      type: { $in: ['PURCHASE', 'PICKUP', 'DEPOSIT'] },
+      type: { $in: ['PURCHASE', 'DEPOSIT'] },
       status: { $ne: 'CANCELLED' },
       date: { $gte: dateRange.start, $lt: dateRange.end }
     };
@@ -1627,7 +1598,7 @@ export class TransactionsService {
     }
 
       const filter: any = {
-      type: { $in: ['PURCHASE', 'PICKUP', 'DEPOSIT', 'WHOLESALE'] },
+      type: { $in: ['PURCHASE', 'DEPOSIT', 'WHOLESALE'] },
       status: { $ne: 'CANCELLED' },
       date: { $gte: dateRange.start, $lt: dateRange.end }
     };
@@ -1681,7 +1652,7 @@ export class TransactionsService {
     }
 
     const filter: any = {
-      type: { $in: ['PURCHASE', 'PICKUP', 'DEPOSIT'] },
+      type: { $in: ['PURCHASE', 'DEPOSIT'] },
       status: { $ne: 'CANCELLED' },
       date: { $gte: dateRange.start, $lt: dateRange.end }
     };
