@@ -56,6 +56,13 @@ export class TransactionsService {
       return this.createWholesaleTransaction(createTransactionDto, user, userAgent);
     }
 
+    // Reject PICKUP transactions - deprecated type (historical data still supported)
+    if ((createTransactionDto.type as any) === 'PICKUP') {
+      throw new BadRequestException(
+        'PICKUP transaction type is deprecated and can no longer be created. Please use PURCHASE instead.'
+      );
+    }
+
     let clientId: Types.ObjectId | undefined = undefined;
     let walkInClient: any = undefined;
 

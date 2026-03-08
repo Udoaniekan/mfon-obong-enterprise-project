@@ -17,8 +17,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     private authService: AuthService,
   ) {
     const jwtSecret =
-      configService.get<string>('JWT_SECRET') || 'your-fallback-secret-key';
-    console.log('JWT_SECRET from JwtStrategy:', jwtSecret);
+      configService.get<string>('JWT_SECRET');
+    
+    // Validate JWT_SECRET exists without logging its value
+    if (!jwtSecret) {
+      console.warn('⚠️  JWT_SECRET not configured. Authentication will not work without it.');
+    }
 
     super({
       jwtFromRequest: (req) => {
