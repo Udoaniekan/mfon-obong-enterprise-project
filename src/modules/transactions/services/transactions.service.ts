@@ -4,13 +4,14 @@ import {
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { InjectModel, InjectConnection } from '@nestjs/mongoose';
+import { Model, Types, Connection } from 'mongoose';
 import {
   Transaction,
   TransactionDocument,
 } from '../schemas/transaction.schema';
 import { Product } from '../../products/schemas/product.schema';
+import { Client, ClientDocument } from '../../clients/schemas/client.schema';
 import { ClientsService } from '../../clients/services/clients.service';
 import { ProductsService } from '../../products/services/products.service';
 import { CategoriesService } from '../../categories/services/categories.service';
@@ -34,6 +35,10 @@ export class TransactionsService {
     private readonly transactionModel: Model<TransactionDocument>,
     @InjectModel(Product.name)
     private readonly productModel: Model<Product>,
+    @InjectModel(Client.name)
+    private readonly clientModel: Model<ClientDocument>,
+    @InjectConnection()
+    private readonly connection: Connection,
     private readonly clientsService: ClientsService,
     private readonly productsService: ProductsService,
     private readonly categoriesService: CategoriesService,
@@ -177,6 +182,8 @@ export class TransactionsService {
     const amountPaid = createTransactionDto.amountPaid || 0;
 
     // Create transaction
+    const session = await this.connection.startSession();
+    try {
     let status = 'PENDING';
     if (clientId) {
       // Registered client
@@ -249,7 +256,7 @@ export class TransactionsService {
     while (saveAttempt < maxSaveAttempts) {
       try {
         saveAttempt++;
-        savedTransaction = await transaction.save();
+        savedTransaction = await transaction.save({ session });
         break;
       } catch (err: any) {
         // Mongo duplicate key error (look for invoiceNumber anywhere in error shape)
@@ -306,7 +313,7 @@ export class TransactionsService {
         }
         // Remove saved transaction to avoid inconsistent state
         try {
-          await this.transactionModel.deleteOne({ _id: savedTransaction._id });
+          await this.transactionModel.deleteOne({ _id: savedTransaction._id }, { session });
         } catch (delErr) {
           console.error('Failed to delete transaction after stock update failure', delErr);
         }
@@ -369,6 +376,21 @@ export class TransactionsService {
           reference: transaction._id.toString(),
           date: transaction.date || new Date(),
         });
+
+        // Calculate and explicitly update client balance within the session
+        let newBalance = clientBalance;
+        if (createTransactionDto.type === 'DEPOSIT') {
+          newBalance = clientBalance + ledgerAmount;
+        } else if (createTransactionDto.type === 'PURCHASE') {
+          newBalance = clientBalance - ledgerAmount;
+        }
+
+        // Update client balance within the transaction session
+        await this.clientModel.updateOne(
+          { _id: clientId },
+          { balance: newBalance },
+          { session }
+        );
       } catch (ledgerErr) {
         // Log the actual error for debugging
         console.error('❌ Client ledger update failed:', ledgerErr);
@@ -395,7 +417,7 @@ export class TransactionsService {
         }
         // Delete the saved transaction
         try {
-          await this.transactionModel.deleteOne({ _id: savedTransaction._id });
+          await this.transactionModel.deleteOne({ _id: savedTransaction._id }, { session });
         } catch (delErr) {
           console.error('Failed to delete transaction after ledger failure', delErr);
         }
@@ -456,18 +478,23 @@ export class TransactionsService {
         // Update the transaction document with the balance snapshot
         await this.transactionModel.updateOne(
           { _id: savedTransaction._id },
-          { clientBalanceAfterTransaction: clientBalance }
+          { clientBalanceAfterTransaction: clientBalance },
+          { session }
         );
       } catch (error) {
         console.error('Failed to fetch updated client balance:', error);
       }
     }
 
+    await session.endSession();
     return {
       ...savedTransaction.toJSON(),
       clientBalance,
       clientBalanceAfterTransaction: clientBalance,
     };
+    } finally {
+      await session.endSession();
+    }
   }
 
   async createReturnTransaction(
