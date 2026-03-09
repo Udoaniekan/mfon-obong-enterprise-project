@@ -74,21 +74,21 @@ export class ProductsService {
 
     const savedProduct = await product.save();
 
-    // Log product creation activity
-    try {
-      const category = await this.categoriesService.findById(
-        createProductDto.categoryId,
-      );
-      await this.systemActivityLogService.createLog({
-        action: 'PRODUCT_CREATED',
-        details: `Product created: ${savedProduct.name} (${savedProduct.unit}) in category ${category.name} - Price: ${savedProduct.unitPrice}`,
-        performedBy: currentUser?.email || currentUser?.name || 'System',
-        role: currentUser?.role || 'SYSTEM',
-        device: device || 'System',
+    // Log product creation activity (non-blocking)
+    this.categoriesService
+      .findById(createProductDto.categoryId)
+      .then((category) => {
+        return this.systemActivityLogService.createLog({
+          action: 'PRODUCT_CREATED',
+          details: `Product created: ${savedProduct.name} (${savedProduct.unit}) in category ${category.name} - Price: ${savedProduct.unitPrice}`,
+          performedBy: currentUser?.email || currentUser?.name || 'System',
+          role: currentUser?.role || 'SYSTEM',
+          device: device || 'System',
+        });
+      })
+      .catch((logError) => {
+        console.error('Failed to log product creation:', logError);
       });
-    } catch (logError) {
-      // Don't fail if logging fails
-    }
 
     // Emit real-time event for product creation
     try {
@@ -217,19 +217,19 @@ export class ProductsService {
     Object.assign(product, updateProductDto);
     const savedProduct = await product.save();
 
-    // Log product update activity
-    try {
-      const changes = Object.keys(updateProductDto).join(', ');
-      await this.systemActivityLogService.createLog({
+    // Log product update activity (non-blocking)
+    const changes = Object.keys(updateProductDto).join(', ');
+    this.systemActivityLogService
+      .createLog({
         action: 'PRODUCT_UPDATED',
         details: `Product updated: ${savedProduct.name} - Changes: ${changes}`,
         performedBy: currentUser?.email || currentUser?.name || 'System',
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
+      })
+      .catch((logError) => {
+        console.error('Failed to log product update:', logError);
       });
-    } catch (logError) {
-      console.error('Failed to log product update:', logError);
-    }
 
     // Emit real-time event for product update
     try {
@@ -312,18 +312,18 @@ export class ProductsService {
       .populate('branchId', 'name')
       .exec();
 
-    // Log stock update activity
-    try {
-      await this.systemActivityLogService.createLog({
+    // Log stock update activity (non-blocking)
+    this.systemActivityLogService
+      .createLog({
         action: 'STOCK_UPDATED',
         details: `Stock ${operation === StockOperation.ADD ? 'increased' : 'decreased'} for ${updatedProduct.name}: ${quantity} ${unit} (New stock: ${newStock})`,
         performedBy: currentUser?.email || currentUser?.name || 'System',
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
+      })
+      .catch((logError) => {
+        console.error('Failed to log stock update:', logError);
       });
-    } catch (logError) {
-      console.error('Failed to log stock update:', logError);
-    }
 
     return updatedProduct;
   }
@@ -337,18 +337,18 @@ export class ProductsService {
     product.isActive = false;
     await product.save();
 
-    // Log product deactivation activity
-    try {
-      await this.systemActivityLogService.createLog({
+    // Log product deactivation activity (non-blocking)
+    this.systemActivityLogService
+      .createLog({
         action: 'PRODUCT_DEACTIVATED',
         details: `Product deactivated: ${product.name} (${product.unit})`,
         performedBy: currentUser?.email || currentUser?.name || 'System',
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
+      })
+      .catch((logError) => {
+        console.error('Failed to log product deactivation:', logError);
       });
-    } catch (logError) {
-      console.error('Failed to log product deactivation:', logError);
-    }
 
     // Emit real-time event for product deletion
     try {
@@ -393,18 +393,18 @@ export class ProductsService {
       throw new NotFoundException('Product not found');
     }
 
-    // Log product hard deletion activity
-    try {
-      await this.systemActivityLogService.createLog({
+    // Log product hard deletion activity (non-blocking)
+    this.systemActivityLogService
+      .createLog({
         action: 'PRODUCT_DELETED',
         details: `Product permanently deleted: ${result.name} (${result.unit})`,
         performedBy: currentUser?.email || currentUser?.name || 'System',
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
+      })
+      .catch((logError) => {
+        console.error('Failed to log product deletion:', logError);
       });
-    } catch (logError) {
-      console.error('Failed to log product deletion:', logError);
-    }
   }
 
   async getLowStockProducts(

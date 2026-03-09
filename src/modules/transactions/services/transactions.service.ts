@@ -425,24 +425,22 @@ export class TransactionsService {
       }
     }
 
-    // Log transaction creation activity
-    try {
-      const clientName = clientId
-        ? (await this.clientsService.findById(createTransactionDto.clientId))
-            .name
-        : createTransactionDto.walkInClient.name;
-
-      await this.systemActivityLogService.createLog({
-        action: 'TRANSACTION_CREATED',
-        details: `Transaction ${savedTransaction.invoiceNumber} created for ${clientName} (${createTransactionDto.type}) - Total: ${total}`,
-        performedBy: user.email || user.name || user.userId,
-        role: user.role,
-        device: extractDeviceInfo(userAgent) || "",
+    // Log transaction creation activity (non-blocking)
+    this.clientsService
+      .findById(createTransactionDto.clientId)
+      .then((client) => {
+        const clientName = clientId ? client.name : createTransactionDto.walkInClient.name;
+        return this.systemActivityLogService.createLog({
+          action: 'TRANSACTION_CREATED',
+          details: `Transaction ${savedTransaction.invoiceNumber} created for ${clientName} (${createTransactionDto.type}) - Total: ${total}`,
+          performedBy: user.email || user.name || user.userId,
+          role: user.role,
+          device: extractDeviceInfo(userAgent) || "",
+        });
+      })
+      .catch((logError) => {
+        console.error('Failed to log transaction creation:', logError);
       });
-    } catch (logError) {
-      console.error('Failed to log transaction creation:', logError);
-      // Don't fail transaction creation if logging fails
-    }
 
     // Emit real-time event for transaction creation
     try {
@@ -649,18 +647,18 @@ export class TransactionsService {
       }
     }
 
-    // Log return transaction activity
-    try {
-      await this.systemActivityLogService.createLog({
+    // Log return transaction activity (non-blocking)
+    this.systemActivityLogService
+      .createLog({
         action: 'RETURN_TRANSACTION_CREATED',
         details: `Return transaction ${savedTransaction.invoiceNumber} created for original transaction ${originalTransaction.invoiceNumber}. Total Refunded: ${totalRefundedAmount}, Actual Amount Returned: ${createTransactionDto.actualAmountReturned}`,
         performedBy: user.email || user.name || user.userId,
         role: user.role,
         device: extractDeviceInfo(userAgent) || '',
+      })
+      .catch((logError) => {
+        console.error('Failed to log return transaction:', logError);
       });
-    } catch (logError) {
-      console.error('Failed to log return transaction:', logError);
-    }
 
     // Emit real-time event
     try {
@@ -910,19 +908,18 @@ export class TransactionsService {
       throw new BadRequestException('Failed to update client ledger. Transaction aborted.');
     }
 
-    // Log transaction creation activity
-    try {
-      await this.systemActivityLogService.createLog({
+    // Log transaction creation activity (non-blocking)
+    this.systemActivityLogService
+      .createLog({
         action: 'WHOLESALE_TRANSACTION_CREATED',
         details: `Wholesale transaction ${savedTransaction.invoiceNumber} created for ${client.name} - Total: ${total}`,
         performedBy: user.email || user.name || user.userId,
         role: user.role,
         device: extractDeviceInfo(userAgent) || "",
+      })
+      .catch((logError) => {
+        console.error('Failed to log wholesale transaction creation:', logError);
       });
-    } catch (logError) {
-      console.error('Failed to log wholesale transaction creation:', logError);
-      // Don't fail transaction creation if logging fails
-    }
 
     // Emit real-time event for transaction creation
     try {
@@ -1125,19 +1122,19 @@ export class TransactionsService {
     Object.assign(transaction, updateTransactionDto);
     const savedTransaction = await transaction.save();
 
-    // Log transaction update activity
-    try {
-      const changes = Object.keys(updateTransactionDto).join(', ');
-      await this.systemActivityLogService.createLog({
+    // Log transaction update activity (non-blocking)
+    const changes = Object.keys(updateTransactionDto).join(', ');
+    this.systemActivityLogService
+      .createLog({
         action: 'TRANSACTION_UPDATED',
         details: `Transaction ${savedTransaction.invoiceNumber} updated - Changes: ${changes}`,
         performedBy: user.email || user.name || user.userId,
         role: user.role,
         device: extractDeviceInfo(userAgent) || '',
+      })
+      .catch((logError) => {
+        console.error('Failed to log transaction update:', logError);
       });
-    } catch (logError) {
-      console.error('Failed to log transaction update:', logError);
-    }
 
     return savedTransaction;
   }
@@ -1477,18 +1474,18 @@ export class TransactionsService {
     transaction.waybillNumber = waybillNumber;
     const savedTransaction = await transaction.save();
 
-    // Log waybill assignment activity
-    try {
-      await this.systemActivityLogService.createLog({
+    // Log waybill assignment activity (non-blocking)
+    this.systemActivityLogService
+      .createLog({
         action: 'WAYBILL_ASSIGNED',
         details: `Waybill number ${savedTransaction.waybillNumber} assigned to transaction ${savedTransaction.invoiceNumber}`,
         performedBy: user.email || user.name || user.userId,
         role: user.role,
         device: 'System',
+      })
+      .catch((logError) => {
+        console.error('Failed to log waybill assignment:', logError);
       });
-    } catch (logError) {
-      console.error('Failed to log waybill assignment:', logError);
-    }
 
     // Emit real-time event for waybill assignment
     try {

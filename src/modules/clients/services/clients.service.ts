@@ -48,18 +48,18 @@ export class ClientsService {
     });
     const savedClient = await client.save();
 
-    // Log client creation activity
-    try {
-      await this.systemActivityLogService.createLog({
+    // Log client creation activity (non-blocking)
+    this.systemActivityLogService
+      .createLog({
         action: 'CLIENT_CREATED',
         details: `New client registered: ${savedClient.name} (${savedClient.phone})`,
         performedBy: currentUser?.email || currentUser?.name || 'System',
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
+      })
+      .catch((logError) => {
+        console.error('Failed to log client creation:', logError);
       });
-    } catch (logError) {
-      console.error('Failed to log client creation:', logError);
-    }
 
     // Emit real-time event for client creation
     try {
@@ -113,52 +113,10 @@ export class ClientsService {
       }
     }
     
-    const clients = await this.clientModel
+    return this.clientModel
       .find(filter)
       .sort({ lastTransactionDate: -1 })
       .exec();
-
-    // Populate transaction details for each client
-    const enrichedClients = [];
-    for (const client of clients) {
-      const enrichedTransactions = [];
-      for (const transaction of client.transactions) {
-        if (transaction.reference && Types.ObjectId.isValid(transaction.reference)) {
-          const fullTransaction = await this.transactionModel
-            .findById(new Types.ObjectId(transaction.reference))
-            .select('amountPaid total')
-            .exec();
-          
-          const enrichedTransaction = {
-            type: transaction.type,
-            description: transaction.description,
-            date: transaction.date,
-            reference: transaction.reference,
-            _id: (transaction as any)._id,
-            amountPaid: fullTransaction?.amountPaid || 0,
-            total: fullTransaction?.total || transaction.amount,
-          };
-          
-          enrichedTransactions.push(enrichedTransaction);
-        } else {
-          enrichedTransactions.push({
-            type: transaction.type,
-            description: transaction.description,
-            date: transaction.date,
-            reference: transaction.reference,
-            _id: (transaction as any)._id,
-            amountPaid: 0,
-            total: transaction.amount,
-          });
-        }
-      }
-      
-      const clientObj = client.toObject();
-      clientObj.transactions = enrichedTransactions;
-      enrichedClients.push(clientObj);
-    }
-
-    return enrichedClients;
   }
 
   async findAllActive(
@@ -223,19 +181,19 @@ export class ClientsService {
     Object.assign(client, updateClientDto);
     const savedClient = await client.save();
 
-    // Log client update activity
-    try {
-      const changes = Object.keys(updateClientDto).join(', ');
-      await this.systemActivityLogService.createLog({
+    // Log client update activity (non-blocking)
+    const changes = Object.keys(updateClientDto).join(', ');
+    this.systemActivityLogService
+      .createLog({
         action: 'CLIENT_UPDATED',
         details: `Client updated: ${savedClient.name} - Changes: ${changes}`,
         performedBy: currentUser?.email || currentUser?.name || 'System',
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
+      })
+      .catch((logError) => {
+        console.error('Failed to log client update:', logError);
       });
-    } catch (logError) {
-      console.error('Failed to log client update:', logError);
-    }
 
     // Emit real-time event for client update
     try {
@@ -299,18 +257,18 @@ export class ClientsService {
     client.lastTransactionDate = transaction.date;
     const savedClient = await client.save();
 
-    // Log client transaction activity
-    try {
-      await this.systemActivityLogService.createLog({
+    // Log client transaction activity (non-blocking)
+    this.systemActivityLogService
+      .createLog({
         action: 'CLIENT_TRANSACTION_ADDED',
         details: `${transaction.type} transaction added for ${client.name}: ${transaction.amount} - Balance: ${client.balance}`,
         performedBy: currentUser?.email || currentUser?.name || 'System',
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
+      })
+      .catch((logError) => {
+        console.error('Failed to log client transaction:', logError);
       });
-    } catch (logError) {
-      console.error('Failed to log client transaction:', logError);
-    }
 
     return savedClient;
   }
@@ -329,18 +287,18 @@ export class ClientsService {
     client.isActive = false;
     await client.save();
 
-    // Log client deletion activity
-    try {
-      await this.systemActivityLogService.createLog({
+    // Log client deletion activity (non-blocking)
+    this.systemActivityLogService
+      .createLog({
         action: 'CLIENT_DELETED',
         details: `Client deleted: ${client.name} (${client.phone})`,
         performedBy: currentUser?.email || currentUser?.name || 'System',
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
+      })
+      .catch((logError) => {
+        console.error('Failed to log client deletion:', logError);
       });
-    } catch (logError) {
-      console.error('Failed to log client deletion:', logError);
-    }
 
     // Emit real-time event for client deletion
     try {
@@ -463,18 +421,18 @@ export class ClientsService {
     client.isActive = false;
     const savedClient = await client.save();
 
-    // Log client block activity
-    try {
-      await this.systemActivityLogService.createLog({
+    // Log client block activity (non-blocking)
+    this.systemActivityLogService
+      .createLog({
         action: 'CLIENT_BLOCKED',
         details: `Client blocked: ${savedClient.name} (${savedClient.phone})`,
         performedBy: currentUser?.email || currentUser?.name || 'System',
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
+      })
+      .catch((logError) => {
+        console.error('Failed to log client block:', logError);
       });
-    } catch (logError) {
-      console.error('Failed to log client block:', logError);
-    }
 
     return savedClient;
   }
@@ -493,18 +451,18 @@ export class ClientsService {
     client.isActive = true;
     const savedClient = await client.save();
 
-    // Log client unblock activity
-    try {
-      await this.systemActivityLogService.createLog({
+    // Log client unblock activity (non-blocking)
+    this.systemActivityLogService
+      .createLog({
         action: 'CLIENT_UNBLOCKED',
         details: `Client unblocked: ${savedClient.name} (${savedClient.phone})`,
         performedBy: currentUser?.email || currentUser?.name || 'System',
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
+      })
+      .catch((logError) => {
+        console.error('Failed to log client unblock:', logError);
       });
-    } catch (logError) {
-      console.error('Failed to log client unblock:', logError);
-    }
 
     return savedClient;
   }
