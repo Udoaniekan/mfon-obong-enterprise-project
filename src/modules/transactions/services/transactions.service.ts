@@ -983,7 +983,7 @@ export class TransactionsService {
     return this.transactionModel
       .find(filter)
       .populate('clientId', 'name phone balance')
-      .populate('userId', 'name')
+      .populate('userId', 'name role')
       .sort({ date: -1 })
       .exec();
   }
@@ -992,7 +992,7 @@ export class TransactionsService {
     const transaction = await this.transactionModel
       .findById(id)
       .populate('clientId', 'name phone balance')
-      .populate('userId', 'name');
+      .populate('userId', 'name role');
 
     if (!transaction) {
       throw new NotFoundException('Transaction not found');
@@ -1005,7 +1005,7 @@ export class TransactionsService {
     const transactions = await this.transactionModel
       .find({ branchId })
       .populate('clientId', 'name phone balance')
-      .populate('userId', 'name')
+      .populate('userId', 'name role')
       .sort({ date: -1 });
 
     return transactions;
@@ -1015,7 +1015,7 @@ export class TransactionsService {
     const transactions = await this.transactionModel
       .find({ userId: new Types.ObjectId(userId) })
       .populate('clientId', 'name phone')
-      .populate('userId', 'name')
+      .populate('userId', 'name role')
       .sort({ date: -1 });
 
     return transactions;
@@ -1025,7 +1025,7 @@ export class TransactionsService {
     const transactions = await this.transactionModel
       .find({ clientId: new Types.ObjectId(clientId) })
       .populate('clientId', 'name phone')
-      .populate('userId', 'name')
+      .populate('userId', 'name role')
       .sort({ date: -1 });
 
     return transactions;
