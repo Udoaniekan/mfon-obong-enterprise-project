@@ -20,16 +20,8 @@ export class AuthController {
     const accessTokenOptions = CookieConfigUtil.getAccessTokenOptions();
     const refreshTokenOptions = CookieConfigUtil.getRefreshTokenOptions();
     
-    console.log('Setting authentication cookies:', { 
-      NODE_ENV: process.env.NODE_ENV,
-      accessTokenOptions,
-      refreshTokenOptions
-    });
-    
     res.cookie('accessToken', result.access_token, accessTokenOptions);
     res.cookie('refreshToken', result.refresh_token, refreshTokenOptions);
-    
-    console.log('✅ Cookies set with consistent configuration');
     
     // Return user info WITH tokens for backwards compatibility
     return {

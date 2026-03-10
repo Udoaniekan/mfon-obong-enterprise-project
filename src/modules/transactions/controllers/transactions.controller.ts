@@ -77,19 +77,13 @@ export class TransactionsController {
     @Body() createTransactionDto: CreateTransactionDto,
     @Request() req,
   ): Promise<Transaction> {
-    console.log('🎯 TRANSACTION POST REQUEST RECEIVED!');
-    console.log('📋 CreateTransactionDto:', JSON.stringify(createTransactionDto, null, 2));
-    console.log('👤 Current User:', JSON.stringify(req.user, null, 2));
-    
     const currentUser = req.user;
     const userAgent = req.headers['user-agent'];
     
     try {
-      console.log('🚀 Calling transactionsService.create...');
       const result = await this.transactionsService.create(
         createTransactionDto, currentUser, userAgent
       );
-      console.log('✅ Transaction created successfully, returning result');
       return result;
     } catch (error) {
       console.error('❌ ERROR in transaction creation:');
