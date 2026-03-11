@@ -984,7 +984,7 @@ export class TransactionsService {
       .find(filter)
       .populate('clientId', 'name phone balance')
       .populate('userId', 'name role')
-      .sort({ date: -1 })
+      .sort({ createdAt: -1 })
       .exec();
   }
 
@@ -1006,7 +1006,7 @@ export class TransactionsService {
       .find({ branchId })
       .populate('clientId', 'name phone balance')
       .populate('userId', 'name role')
-      .sort({ date: -1 });
+      .sort({ createdAt: -1 });
 
     return transactions;
   }
@@ -1016,7 +1016,7 @@ export class TransactionsService {
       .find({ userId: new Types.ObjectId(userId) })
       .populate('clientId', 'name phone')
       .populate('userId', 'name role')
-      .sort({ date: -1 });
+      .sort({ createdAt: -1 });
 
     return transactions;
   }
@@ -1026,7 +1026,7 @@ export class TransactionsService {
       .find({ clientId: new Types.ObjectId(clientId) })
       .populate('clientId', 'name phone')
       .populate('userId', 'name role')
-      .sort({ date: -1 });
+      .sort({ createdAt: -1 });
 
     return transactions;
   }
@@ -1544,7 +1544,7 @@ export class TransactionsService {
     const transactions = await this.transactionModel
       .find(filter)
       .populate('branchId', 'name')
-      .sort({ date: -1 })
+      .sort({ createdAt: -1 })
       .limit(10);
 
     return {
