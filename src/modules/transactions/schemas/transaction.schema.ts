@@ -138,3 +138,5 @@ export class Transaction {
 export const TransactionSchema = SchemaFactory.createForClass(Transaction);
 // Ensure invoiceNumber is unique to prevent duplicates
 TransactionSchema.index({ invoiceNumber: 1 }, { unique: true });
+// Optimize queries for finding returns by reference transaction
+TransactionSchema.index({ type: 1, referenceTransactionId: 1 });

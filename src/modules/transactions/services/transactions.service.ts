@@ -183,6 +183,10 @@ export class TransactionsService {
 
     // Create transaction
     const session = await this.connection.startSession();
+    session.startTransaction();
+    
+    let newBalance = 0; // Track new balance for return value
+    
     try {
     let status = 'PENDING';
     if (clientId) {
@@ -323,74 +327,69 @@ export class TransactionsService {
 
     // Update client balance only for registered clients
     if (clientId) {
+      // Initialize ledger tracking variables (declared outside try for catch block access)
       let ledgerType: 'DEPOSIT' | 'PURCHASE';
-      if (createTransactionDto.type === 'DEPOSIT') {
-        ledgerType = 'DEPOSIT';
-      } else {
-        ledgerType = 'PURCHASE';
-      }
-      
       let ledgerAmount = 0;
       let ledgerDescription = `Invoice #${transaction.invoiceNumber}`;
       
       try {
+        // LEDGER APPROACH: Calculate new balance based on transaction type
+        // Fetch current balance before transaction
         const client = await this.clientsService.findById(clientId.toString());
-        const clientBalance = client.balance || 0;
-
-        // For DEPOSIT transactions: Add the deposit to client balance
+        const currentBalance = client.balance || 0;
+        let newBalance = currentBalance;
+        
         if (createTransactionDto.type === 'DEPOSIT') {
-          // For DEPOSIT: addTransaction does client.balance += amount
-          // So we pass positive amount to add to balance
+          // DEPOSIT: Add payment to balance
+          ledgerType = 'DEPOSIT';
           ledgerAmount = amountPaid;
+          newBalance = currentBalance + amountPaid;
           ledgerDescription = `Deposit of ${amountPaid} added to account`;
-        }
-        // For PURCHASE transactions: Full flexibility - can create debt
-        else if (createTransactionDto.type === 'PURCHASE') {
-          // Calculate how much to deduct/add to balance
-          // ledgerAmount = total - amountPaid (what needs to come from/go to balance)
-          ledgerAmount = total - amountPaid;
+        } else if (createTransactionDto.type === 'PURCHASE') {
+          // PURCHASE: Deduct outstanding amount from balance (total - amountPaid)
+          ledgerType = 'PURCHASE';
+          ledgerAmount = total - amountPaid; // How much is outstanding
+          newBalance = currentBalance - ledgerAmount;
           
           if (amountPaid > total) {
-            // Overpaid - add excess as credit (negative ledgerAmount adds to balance)
             const excess = amountPaid - total;
             ledgerDescription += ` (Overpaid by ${excess} - added as credit)`;
           } else if (amountPaid === total) {
-            // Paid exactly - no balance change
-            ledgerDescription += ` (Paid in full - balance untouched)`;
+            ledgerDescription += ` (Paid in full)`;
           } else {
-            // Underpaid - deduct from balance (can go negative/debt)
-            const fromBalance = total - amountPaid;
-            const resultingBalance = clientBalance - fromBalance;
-            if (resultingBalance < 0) {
-              ledgerDescription += ` (Paid ${amountPaid}, used ${clientBalance > 0 ? clientBalance : 0} from balance, debt ${Math.abs(resultingBalance)})`;
-            } else {
-              ledgerDescription += ` (Used ${fromBalance} from balance + ${amountPaid} payment)`;
-            }
+            const outstanding = total - amountPaid;
+            ledgerDescription += ` (Outstanding: ${outstanding})`;
           }
         }
-        
-        await this.clientsService.addTransaction(clientId.toString(), {
-          type: ledgerType,
-          amount: ledgerAmount,
-          description: ledgerDescription,
-          reference: transaction._id.toString(),
-          date: transaction.date || new Date(),
-        });
 
-        // Calculate and explicitly update client balance within the session
-        let newBalance = clientBalance;
-        if (createTransactionDto.type === 'DEPOSIT') {
-          newBalance = clientBalance + ledgerAmount;
-        } else if (createTransactionDto.type === 'PURCHASE') {
-          newBalance = clientBalance - ledgerAmount;
-        }
-
-        // Update client balance within the transaction session
-        await this.clientModel.updateOne(
+        // Update client balance atomically within the transaction session
+        const updateResult = await this.clientModel.updateOne(
           { _id: clientId },
-          { balance: newBalance },
+          { 
+            balance: newBalance,
+            lastTransactionDate: transaction.date || new Date()
+          },
           { session }
         );
+
+        if (updateResult.matchedCount === 0) {
+          throw new Error('Client not found during balance update');
+        }
+
+        // Update transaction with balance snapshot
+        await this.transactionModel.updateOne(
+          { _id: savedTransaction._id },
+          { clientBalanceAfterTransaction: newBalance },
+          { session }
+        );
+
+        // Validation: Verify the balance was updated correctly
+        const updatedClient = await this.clientModel.findById(clientId).session(session);
+        if (updatedClient.balance !== newBalance) {
+          throw new Error(
+            `Balance validation failed. Expected: ${newBalance}, Got: ${updatedClient.balance}`
+          );
+        }
       } catch (ledgerErr) {
         // Log the actual error for debugging
         console.error('❌ Client ledger update failed:', ledgerErr);
@@ -464,32 +463,21 @@ export class TransactionsService {
       // Don't fail transaction creation if real-time event fails
     }
 
-    // Get updated client balance for registered clients and save it to the transaction
-    let clientBalance = null;
-    if (clientId) {
-      try {
-        const updatedClient = await this.clientsService.findById(
-          createTransactionDto.clientId,
-        );
-        clientBalance = updatedClient.balance || 0;
-        
-        // Update the transaction document with the balance snapshot
-        await this.transactionModel.updateOne(
-          { _id: savedTransaction._id },
-          { clientBalanceAfterTransaction: clientBalance },
-          { session }
-        );
-      } catch (error) {
-        console.error('Failed to fetch updated client balance:', error);
-      }
-    }
+    // Commit the session
+    await session.commitTransaction();
 
-    await session.endSession();
+    // Return transaction with balance snapshot
+    const clientBalance = clientId ? newBalance : null;
     return {
       ...savedTransaction.toJSON(),
       clientBalance,
       clientBalanceAfterTransaction: clientBalance,
     };
+    } catch (error) {
+      // Rollback transaction on error
+      await session.abortTransaction();
+      console.error('❌ Transaction creation failed:', error);
+      throw error;
     } finally {
       await session.endSession();
     }
@@ -502,27 +490,43 @@ export class TransactionsService {
   ): Promise<Transaction & { clientBalance?: number }> {
     // Validate required fields for RETURN transactions
     if (!createTransactionDto.referenceTransactionId) {
-      throw new BadRequestException('referenceTransactionId is required for RETURN transactions');
+      throw new BadRequestException('Please select the original purchase transaction to return items from.');
     }
     if (!createTransactionDto.reason) {
-      throw new BadRequestException('reason is required for RETURN transactions');
+      throw new BadRequestException('Please provide a reason for this return.');
     }
     if (!createTransactionDto.items || createTransactionDto.items.length === 0) {
-      throw new BadRequestException('items are required for RETURN transactions');
+      throw new BadRequestException('Please select at least one item to return.');
     }
     if (createTransactionDto.actualAmountReturned === undefined || createTransactionDto.actualAmountReturned < 0) {
-      throw new BadRequestException('actualAmountReturned is required and must be >= 0 for RETURN transactions');
+      throw new BadRequestException('Please enter the amount being returned to the customer (can be 0 if no cash refund).');
     }
 
     // Fetch the original transaction
     const originalTransaction = await this.transactionModel.findById(createTransactionDto.referenceTransactionId);
     if (!originalTransaction) {
-      throw new NotFoundException('Original transaction not found');
+      throw new NotFoundException('The original purchase transaction could not be found. It may have been deleted.');
     }
 
     // Validate that the original transaction is not a DEPOSIT or RETURN
     if (originalTransaction.type === 'DEPOSIT' || originalTransaction.type === 'RETURN') {
-      throw new BadRequestException('Cannot create a return for a DEPOSIT or RETURN transaction');
+      throw new BadRequestException('You can only return items from purchase transactions, not deposits or previous returns.');
+    }
+
+    // Fetch all previous returns for this transaction to calculate remaining returnable quantities
+    const previousReturns = await this.transactionModel.find({
+      referenceTransactionId: originalTransaction._id,
+      type: 'RETURN',
+    });
+
+    // Build map of already returned quantities per product
+    const returnedQuantitiesMap = new Map<string, number>();
+    for (const prevReturn of previousReturns) {
+      for (const item of prevReturn.items) {
+        const productId = item.productId.toString();
+        const currentReturned = returnedQuantitiesMap.get(productId) || 0;
+        returnedQuantitiesMap.set(productId, currentReturned + item.quantity);
+      }
     }
 
     // Process returned items and calculate refunds
@@ -537,21 +541,25 @@ export class TransactionsService {
 
       if (!originalItem) {
         throw new BadRequestException(
-          `Product ${returnItem.productId} was not in the original transaction`
+          `This product was not included in the original purchase.`
         );
       }
 
       // Validate unit matches
       if (returnItem.unit !== originalItem.unit) {
         throw new BadRequestException(
-          `Unit mismatch for product ${returnItem.productId}. Expected: ${originalItem.unit}, Got: ${returnItem.unit}`
+          `Unit mismatch for ${originalItem.productName}. Originally sold in ${originalItem.unit}, but you're trying to return in ${returnItem.unit}.`
         );
       }
 
-      // Validate return quantity doesn't exceed purchased quantity
-      if (returnItem.quantity > originalItem.quantity) {
+      // Validate return quantity does not exceed remaining returnable quantity
+      const alreadyReturnedQty = returnedQuantitiesMap.get(returnItem.productId) || 0;
+      const remainingReturnableQty = originalItem.quantity - alreadyReturnedQty;
+
+      if (returnItem.quantity > remainingReturnableQty) {
+        const alreadyReturnedText = alreadyReturnedQty > 0 ? ` (${alreadyReturnedQty} already returned)` : '';
         throw new BadRequestException(
-          `Return quantity (${returnItem.quantity}) exceeds purchased quantity (${originalItem.quantity}) for product ${originalItem.productName}`
+          `You can only return ${remainingReturnableQty} more ${originalItem.unit} of ${originalItem.productName} from this purchase.${alreadyReturnedText}`
         );
       }
 
@@ -563,8 +571,8 @@ export class TransactionsService {
       // Calculate refund per your business rules:
       // If price increased, refund at original price
       // If price decreased, refund at new (lower) price
-      const refundPricePerUnit = currentPricePerUnit < originalPricePerUnit 
-        ? currentPricePerUnit 
+      const refundPricePerUnit = currentPricePerUnit < originalPricePerUnit
+        ? currentPricePerUnit
         : originalPricePerUnit;
 
       const itemRefundAmount = refundPricePerUnit * returnItem.quantity;
@@ -620,72 +628,103 @@ export class TransactionsService {
     });
 
     // Save the return transaction
-    const savedTransaction = await returnTransaction.save();
+    const session = await this.connection.startSession();
+    session.startTransaction();
+    
+    try {
+      const savedTransaction = await returnTransaction.save({ session });
 
-    // Update client balance if it's a registered client (deduct the actual amount returned)
-    let clientBalance = 0;
-    if (originalTransaction.clientId) {
-      await this.clientsService.addTransaction(originalTransaction.clientId.toString(), {
-        type: 'RETURN',
-        amount: createTransactionDto.actualAmountReturned,
-        description: `Return for Invoice #${originalTransaction.invoiceNumber} - Reason: ${createTransactionDto.reason}`,
-        reference: savedTransaction._id.toString(),
-        date: accountingDate,
-      });
-
-      try {
+      // Update client balance if it's a registered client using LEDGER APPROACH
+      let newBalance = 0;
+      if (originalTransaction.clientId) {
+        // LEDGER APPROACH: Fetch current balance and calculate new balance
         const client = await this.clientsService.findById(originalTransaction.clientId.toString());
-        clientBalance = client.balance || 0;
+        const currentBalance = client.balance || 0;
         
-        // Update the transaction document with the balance snapshot
+        // RETURN: Add actualAmountReturned to balance
+        newBalance = currentBalance + createTransactionDto.actualAmountReturned;
+
+        // Update client balance atomically within the transaction session
+        const updateResult = await this.clientModel.updateOne(
+          { _id: originalTransaction.clientId },
+          { 
+            balance: newBalance,
+            lastTransactionDate: accountingDate
+          },
+          { session }
+        );
+
+        if (updateResult.matchedCount === 0) {
+          throw new Error('Client not found during balance update');
+        }
+
+        // Update transaction with balance snapshot
         await this.transactionModel.updateOne(
           { _id: savedTransaction._id },
-          { clientBalanceAfterTransaction: clientBalance }
+          { clientBalanceAfterTransaction: newBalance },
+          { session }
         );
-      } catch (error) {
-        console.error('Failed to fetch updated client balance:', error);
-      }
-    }
 
-    // Log return transaction activity (non-blocking)
-    this.systemActivityLogService
-      .createLog({
-        action: 'RETURN_TRANSACTION_CREATED',
-        details: `Return transaction ${savedTransaction.invoiceNumber} created for original transaction ${originalTransaction.invoiceNumber}. Total Refunded: ${totalRefundedAmount}, Actual Amount Returned: ${createTransactionDto.actualAmountReturned}`,
-        performedBy: user.email || user.name || user.userId,
-        role: user.role,
-        device: extractDeviceInfo(userAgent) || '',
-      })
-      .catch((logError) => {
-        console.error('Failed to log return transaction:', logError);
-      });
-
-    // Emit real-time event
-    try {
-      const eventData = this.realtimeEventService.createEventData(
-        'created',
-        'transaction',
-        savedTransaction._id.toString(),
-        savedTransaction,
-        {
-          id: user.userId,
-          email: user.email || 'unknown@system.com',
-          role: user.role as UserRole,
-          branchId: savedTransaction.branchId?.toString(),
-          branch: user.branch || 'System Branch',
+        // Validation: Verify the balance was updated correctly
+        const updatedClient = await this.clientModel.findById(originalTransaction.clientId).session(session);
+        if (updatedClient.balance !== newBalance) {
+          throw new Error(
+            `Balance validation failed. Expected: ${newBalance}, Got: ${updatedClient.balance}`
+          );
         }
-      );
-      
-      this.realtimeEventService.emitTransactionCreated(eventData);
-    } catch (realtimeError) {
-      console.error('Failed to emit real-time return transaction event:', realtimeError);
-    }
+      }
 
-    return {
-      ...savedTransaction.toJSON(),
-      clientBalance,
-      clientBalanceAfterTransaction: clientBalance,
-    };
+      // Commit the transaction
+      await session.commitTransaction();
+      await session.endSession();
+
+      // Log return transaction activity (non-blocking)
+      this.systemActivityLogService
+        .createLog({
+          action: 'RETURN_TRANSACTION_CREATED',
+          details: `Return transaction ${savedTransaction.invoiceNumber} created for original transaction ${originalTransaction.invoiceNumber}. Total Refunded: ${totalRefundedAmount}, Actual Amount Returned: ${createTransactionDto.actualAmountReturned}`,
+          performedBy: user.email || user.name || user.userId,
+          role: user.role,
+          device: extractDeviceInfo(userAgent) || '',
+        })
+        .catch((logError) => {
+          console.error('Failed to log return transaction:', logError);
+        });
+
+      // Emit real-time event
+      try {
+        const eventData = this.realtimeEventService.createEventData(
+          'created',
+          'transaction',
+          savedTransaction._id.toString(),
+          savedTransaction,
+          {
+            id: user.userId,
+            email: user.email || 'unknown@system.com',
+            role: user.role as UserRole,
+            branchId: savedTransaction.branchId?.toString(),
+            branch: user.branch || 'System Branch',
+          }
+        );
+        
+        this.realtimeEventService.emitTransactionCreated(eventData);
+      } catch (realtimeError) {
+        console.error('Failed to emit real-time return transaction event:', realtimeError);
+      }
+
+      return {
+        ...savedTransaction.toJSON(),
+        clientBalance: newBalance,
+        clientBalanceAfterTransaction: newBalance,
+      };
+    } catch (error) {
+      // Rollback transaction on error
+      await session.abortTransaction();
+      await session.endSession();
+      
+      console.error('❌ RETURN transaction creation failed:', error);
+      throw new BadRequestException(`Failed to create return transaction: ${error.message}`);
+    }
   }
 
   async createWholesaleTransaction(
@@ -820,149 +859,158 @@ export class TransactionsService {
       clientBalanceAfterTransaction: null, // Will be updated after client ledger update
     });
 
-    // Save transaction with retry-on-duplicate (invoiceNumber collisions)
-    const maxSaveAttempts = 5;
-    let saveAttempt = 0;
-    let savedTransaction = null as any;
-    while (saveAttempt < maxSaveAttempts) {
-      try {
-        saveAttempt++;
-        savedTransaction = await transaction.save();
-        break;
-      } catch (err: any) {
-        // Mongo duplicate key error (look for invoiceNumber anywhere in error shape)
-        const isDuplicateInvoice =
-          err?.code === 11000 && (
-            (err.keyPattern && err.keyPattern.invoiceNumber) ||
-            (err.keyValue && err.keyValue.invoiceNumber) ||
-            (typeof err.message === 'string' && err.message.includes('invoiceNumber'))
-          );
+    // Start MongoDB session for atomic transaction
+    const session = await this.connection.startSession();
+    session.startTransaction();
+    let newBalance = 0;
 
-        if (isDuplicateInvoice) {
-          // regenerate invoice number and retry
-          if (saveAttempt >= maxSaveAttempts) {
-            throw new ConflictException('Duplicate entry');
-          }
-          const newInv = await this.generateInvoiceNumber(accountingDate);
-          transaction.invoiceNumber = newInv;
-          continue;
-        }
-        // rethrow other errors
-        throw err;
-      }
-    }
+    // Initialize ledger tracking variables (declared outside try for error handling)
+    let ledgerType: 'PURCHASE' = 'PURCHASE';
+    let ledgerAmount = 0;
+    let ledgerDescription = `Wholesale Invoice #${transaction.invoiceNumber}`;
 
-    if (!savedTransaction) {
-      throw new ConflictException('Duplicate entry');
-    }
-
-    // NO STOCK UPDATES FOR WHOLESALE - This is the key difference
-
-    // Update client balance (PURCHASE allows debt for registered clients)
     try {
-      let ledgerAmount = 0;
-      let ledgerDescription = `Wholesale Invoice #${transaction.invoiceNumber}`;
-      const updatedClientBalance = client.balance || 0;
+      // Save transaction with retry-on-duplicate (invoiceNumber collisions)
+      const maxSaveAttempts = 5;
+      let saveAttempt = 0;
+      let savedTransaction = null as any;
+      while (saveAttempt < maxSaveAttempts) {
+        try {
+          saveAttempt++;
+          savedTransaction = await transaction.save({ session });
+          break;
+        } catch (err: any) {
+          // Mongo duplicate key error (look for invoiceNumber anywhere in error shape)
+          const isDuplicateInvoice =
+            err?.code === 11000 && (
+              (err.keyPattern && err.keyPattern.invoiceNumber) ||
+              (err.keyValue && err.keyValue.invoiceNumber) ||
+              (typeof err.message === 'string' && err.message.includes('invoiceNumber'))
+            );
 
-      if (totalAvailable >= total) {
-        // PURCHASE-like: Payment + balance covers total
-        if (amountPaid >= total) {
-          // Paid full or more - balance untouched
-          if (amountPaid > total) {
-            // Overpaid - add excess as credit
-            const excess = amountPaid - total;
-            ledgerAmount = -excess; // Negative means adding credit
-            ledgerDescription += ` (Overpaid by ${excess} - added as credit)`;
-          } else {
-            // Paid exactly - no balance change
-            ledgerAmount = 0;
-            ledgerDescription += ` (Paid in full - balance untouched)`;
+          if (isDuplicateInvoice) {
+            // regenerate invoice number and retry
+            if (saveAttempt >= maxSaveAttempts) {
+              throw new ConflictException('Duplicate entry');
+            }
+            const newInv = await this.generateInvoiceNumber(accountingDate);
+            transaction.invoiceNumber = newInv;
+            continue;
           }
-        } else {
-          // Used balance to complete purchase
-          const neededFromBalance = total - amountPaid;
-          ledgerAmount = neededFromBalance; // Positive means deducting from balance
-          ledgerDescription += ` (Used ${neededFromBalance} from balance + ${amountPaid} payment)`;
+          // rethrow other errors
+          throw err;
         }
+      }
+
+      if (!savedTransaction) {
+        throw new ConflictException('Duplicate entry');
+      }
+
+      // NO STOCK UPDATES FOR WHOLESALE - This is the key difference
+
+      // LEDGER APPROACH: Calculate new balance based on transaction
+      // Fetch current balance before transaction
+      const currentBalance = client.balance || 0;
+      ledgerAmount = total - amountPaid; // How much is outstanding
+      newBalance = currentBalance - ledgerAmount;
+
+      if (amountPaid > total) {
+        const excess = amountPaid - total;
+        ledgerDescription += ` (Overpaid by ${excess} - added as credit)`;
+      } else if (amountPaid === total) {
+        ledgerDescription += ` (Paid in full)`;
       } else {
-        // PURCHASE: Will create debt (allowed for registered clients)
-        const debt = total - totalAvailable;
-        ledgerAmount = total - amountPaid; // This will use balance and create debt
-        ledgerDescription += ` (Used ${updatedClientBalance > 0 ? updatedClientBalance : 0} from balance, paid ${amountPaid}, debt ${debt})`;
+        const outstanding = total - amountPaid;
+        ledgerDescription += ` (Outstanding: ${outstanding})`;
       }
-      
-      await this.clientsService.addTransaction(clientId.toString(), {
-        type: 'PURCHASE', // WHOLESALE uses PURCHASE ledger type
-        amount: ledgerAmount,
-        description: ledgerDescription,
-        reference: transaction._id.toString(),
-        date: transaction.date || new Date(),
-      });
-    } catch (ledgerErr) {
-      // Delete the saved transaction if ledger update fails
-      try {
-        await this.transactionModel.deleteOne({ _id: savedTransaction._id });
-      } catch (delErr) {
-        console.error('Failed to delete transaction after ledger failure', delErr);
-      }
-      throw new BadRequestException('Failed to update client ledger. Transaction aborted.');
-    }
 
-    // Log transaction creation activity (non-blocking)
-    this.systemActivityLogService
-      .createLog({
-        action: 'WHOLESALE_TRANSACTION_CREATED',
-        details: `Wholesale transaction ${savedTransaction.invoiceNumber} created for ${client.name} - Total: ${total}`,
-        performedBy: user.email || user.name || user.userId,
-        role: user.role,
-        device: extractDeviceInfo(userAgent) || "",
-      })
-      .catch((logError) => {
-        console.error('Failed to log wholesale transaction creation:', logError);
-      });
-
-    // Emit real-time event for transaction creation
-    try {
-      const eventData = this.realtimeEventService.createEventData(
-        'created',
-        'transaction',
-        savedTransaction._id.toString(),
-        savedTransaction,
-        {
-          id: user.userId,
-          email: user.email || 'unknown@system.com',
-          role: user.role as UserRole,
-          branchId: createTransactionDto.branchId,
-          branch: user.branch || 'System Branch', 
-        }
+      // Update client balance atomically within the transaction session
+      const updateResult = await this.clientModel.updateOne(
+        { _id: clientId },
+        { 
+          balance: newBalance,
+          lastTransactionDate: transaction.date || new Date()
+        },
+        { session }
       );
-      
-      this.realtimeEventService.emitTransactionCreated(eventData);
-    } catch (realtimeError) {
-      console.error('❌ Failed to emit real-time wholesale transaction event:', realtimeError);
-      // Don't fail transaction creation if real-time event fails
-    }
 
-    // Get updated client balance and save it to the transaction
-    let finalClientBalance = 0;
-    try {
-      const updatedClient = await this.clientsService.findById(createTransactionDto.clientId);
-      finalClientBalance = updatedClient.balance || 0;
-      
-      // Update the transaction document with the balance snapshot
+      if (updateResult.matchedCount === 0) {
+        throw new Error('Client not found during balance update');
+      }
+
+      // Update transaction with balance snapshot
       await this.transactionModel.updateOne(
         { _id: savedTransaction._id },
-        { clientBalanceAfterTransaction: finalClientBalance }
+        { clientBalanceAfterTransaction: newBalance },
+        { session }
       );
-    } catch (error) {
-      console.error('Failed to fetch updated client balance:', error);
-    }
 
-    return {
-      ...savedTransaction.toJSON(),
-      clientBalance: finalClientBalance,
-      clientBalanceAfterTransaction: finalClientBalance,
-    };
+      // Validation: Verify the balance was updated correctly
+      const updatedClient = await this.clientModel.findById(clientId).session(session);
+      if (updatedClient.balance !== newBalance) {
+        throw new Error(
+          `Balance validation failed. Expected: ${newBalance}, Got: ${updatedClient.balance}`
+        );
+      }
+
+      // Commit the transaction
+      await session.commitTransaction();
+
+      // Log transaction creation activity (non-blocking)
+      this.systemActivityLogService
+        .createLog({
+          action: 'WHOLESALE_TRANSACTION_CREATED',
+          details: `Wholesale transaction ${savedTransaction.invoiceNumber} created for ${client.name} - Total: ${total}`,
+          performedBy: user.email || user.name || user.userId,
+          role: user.role,
+          device: extractDeviceInfo(userAgent) || "",
+        })
+        .catch((logError) => {
+          console.error('Failed to log wholesale transaction creation:', logError);
+        });
+
+      // Emit real-time event for transaction creation
+      try {
+        const eventData = this.realtimeEventService.createEventData(
+          'created',
+          'transaction',
+          savedTransaction._id.toString(),
+          savedTransaction,
+          {
+            id: user.userId,
+            email: user.email || 'unknown@system.com',
+            role: user.role as UserRole,
+            branchId: createTransactionDto.branchId,
+            branch: user.branch || 'System Branch', 
+          }
+        );
+        
+        this.realtimeEventService.emitTransactionCreated(eventData);
+      } catch (realtimeError) {
+        console.error('❌ Failed to emit real-time wholesale transaction event:', realtimeError);
+        // Don't fail transaction creation if real-time event fails
+      }
+
+      return {
+        ...savedTransaction.toJSON(),
+        clientBalance: newBalance,
+        clientBalanceAfterTransaction: newBalance,
+      };
+    } catch (error) {
+      // Log the actual error for debugging
+      console.error('❌ WHOLESALE transaction failed:', error);
+      console.error('Ledger details:', {
+        clientId: clientId.toString(),
+        ledgerType,
+        ledgerAmount,
+        ledgerDescription,
+      });
+      
+      await session.abortTransaction();
+      throw error;
+    } finally {
+      await session.endSession();
+    }
   }
 
   async findAll(query: QueryTransactionsDto): Promise<Transaction[]> {
