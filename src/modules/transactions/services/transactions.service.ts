@@ -787,15 +787,17 @@ export class TransactionsService {
           );
         }
 
-        // For WHOLESALE, wholesalePrice is required
-        if (!item.wholesalePrice || item.wholesalePrice <= 0) {
+        // For WHOLESALE, use UI-provided unitPrice from request body.
+        // Keep wholesalePrice fallback for backward compatibility with older clients.
+        const wholesaleUnitPrice = item.unitPrice ?? item.wholesalePrice;
+        if (!wholesaleUnitPrice || wholesaleUnitPrice <= 0) {
           throw new BadRequestException(
-            `Wholesale price is required and must be greater than 0 for product ${product.name}`
+            `Wholesale unit price is required and must be greater than 0 for product ${product.name}`
           );
         }
 
-        // Calculate price using wholesale price (NO STOCK VALIDATION)
-        const price = item.wholesalePrice * item.quantity;
+        // Calculate price using wholesale unit price from request body (NO STOCK VALIDATION)
+        const price = wholesaleUnitPrice * item.quantity;
         const itemSubtotal = price - (item.discount || 0);
         subtotal += itemSubtotal;
 
@@ -804,10 +806,10 @@ export class TransactionsService {
           productName: product.name,
           quantity: item.quantity,
           unit: item.unit,
-          unitPrice: item.wholesalePrice, // Use wholesale price as unit price
+          unitPrice: wholesaleUnitPrice, // Persist effective wholesale unit price
           discount: item.discount || 0,
           subtotal: itemSubtotal,
-          wholesalePrice: item.wholesalePrice, // Store wholesale price separately
+          wholesalePrice: wholesaleUnitPrice,
         };
       }),
     );
@@ -1367,16 +1369,18 @@ export class TransactionsService {
             );
           }
 
-          // For WHOLESALE, wholesalePrice is required
-          if (!item.wholesalePrice || item.wholesalePrice <= 0) {
+          // For WHOLESALE, use UI-provided unitPrice from request body.
+          // Keep wholesalePrice fallback for backward compatibility with older clients.
+          const wholesaleUnitPrice = item.unitPrice ?? item.wholesalePrice;
+          if (!wholesaleUnitPrice || wholesaleUnitPrice <= 0) {
             throw new BadRequestException(
-              `Wholesale price is required and must be greater than 0 for product ${product.name}`
+              `Wholesale unit price is required and must be greater than 0 for product ${product.name}`
             );
           }
 
           // NO STOCK VALIDATION for WHOLESALE
-          // Calculate price using wholesale price
-          const price = item.wholesalePrice * item.quantity;
+          // Calculate price using wholesale unit price from request body
+          const price = wholesaleUnitPrice * item.quantity;
           const itemSubtotal = price - (item.discount || 0);
           subtotal += itemSubtotal;
 
@@ -1385,10 +1389,10 @@ export class TransactionsService {
             productName: product.name,
             quantity: item.quantity,
             unit: item.unit,
-            unitPrice: item.wholesalePrice,
+            unitPrice: wholesaleUnitPrice,
             discount: item.discount || 0,
             subtotal: itemSubtotal,
-            wholesalePrice: item.wholesalePrice,
+            wholesalePrice: wholesaleUnitPrice,
           };
         }),
       );
