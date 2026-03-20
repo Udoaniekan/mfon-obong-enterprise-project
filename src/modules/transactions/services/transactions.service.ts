@@ -435,6 +435,7 @@ export class TransactionsService {
           performedBy: user.email || user.name || user.userId,
           role: user.role,
           device: extractDeviceInfo(userAgent) || "",
+          branchId: (user as any).branchId?.toString(),
         });
       })
       .catch((logError) => {
@@ -688,6 +689,7 @@ export class TransactionsService {
           performedBy: user.email || user.name || user.userId,
           role: user.role,
           device: extractDeviceInfo(userAgent) || '',
+          branchId: (user as any).branchId?.toString(),
         })
         .catch((logError) => {
           console.error('Failed to log return transaction:', logError);
@@ -968,6 +970,7 @@ export class TransactionsService {
           performedBy: user.email || user.name || user.userId,
           role: user.role,
           device: extractDeviceInfo(userAgent) || "",
+          branchId: (user as any).branchId?.toString(),
         })
         .catch((logError) => {
           console.error('Failed to log wholesale transaction creation:', logError);
@@ -1183,6 +1186,7 @@ export class TransactionsService {
         performedBy: user.email || user.name || user.userId,
         role: user.role,
         device: extractDeviceInfo(userAgent) || '',
+        branchId: (user as any).branchId?.toString(),
       })
       .catch((logError) => {
         console.error('Failed to log transaction update:', logError);
@@ -1536,6 +1540,7 @@ export class TransactionsService {
         performedBy: user.email || user.name || user.userId,
         role: user.role,
         device: 'System',
+        branchId: (user as any).branchId?.toString(),
       })
       .catch((logError) => {
         console.error('Failed to log waybill assignment:', logError);

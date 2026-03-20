@@ -53,6 +53,7 @@ export class UsersService {
         performedBy: currentUser?.email || currentUser?.name || 'System',
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
+        branchId: currentUser?.branchId?.toString(),
       });
     } catch (logError) {
       console.error('Failed to log user block:', logError);
@@ -88,6 +89,7 @@ export class UsersService {
         performedBy: currentUser?.email || currentUser?.name || 'System',
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
+        branchId: currentUser?.branchId?.toString(),
       });
     } catch (logError) {
       console.error('Failed to log user unblock:', logError);
@@ -131,6 +133,7 @@ export class UsersService {
         performedBy: currentUser?.email || currentUser?.name || 'System',
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
+        branchId: (currentUser as any)?.branchId?.toString() || savedUser.branchId?.toString(),
       });
     } catch (logError) {
       console.error('Failed to log user creation:', logError);
@@ -269,6 +272,7 @@ export class UsersService {
         performedBy: currentUser?.email || currentUser?.name || 'System',
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
+        branchId: currentUser?.branchId?.toString(),
       });
     } catch (logError) {
       console.error('Failed to log user update:', logError);
@@ -309,6 +313,7 @@ export class UsersService {
         performedBy: currentUser?.email || currentUser?.name || 'System',
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
+        branchId: currentUser?.branchId?.toString(),
       });
     } catch (logError) {
       console.error('Failed to log user deletion:', logError);
@@ -374,6 +379,7 @@ export class UsersService {
         performedBy: user.email,
         role: user.role,
         device: 'System',
+        branchId: user.branchId?.toString(),
       });
     } catch (logError) {
       // Don't fail if logging fails

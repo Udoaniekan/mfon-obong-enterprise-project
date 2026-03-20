@@ -84,6 +84,7 @@ export class ProductsService {
           performedBy: currentUser?.email || currentUser?.name || 'System',
           role: currentUser?.role || 'SYSTEM',
           device: device || 'System',
+          branchId: currentUser?.branchId?.toString(),
         });
       })
       .catch((logError) => {
@@ -226,6 +227,7 @@ export class ProductsService {
         performedBy: currentUser?.email || currentUser?.name || 'System',
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
+        branchId: currentUser?.branchId?.toString(),
       })
       .catch((logError) => {
         console.error('Failed to log product update:', logError);
@@ -320,6 +322,7 @@ export class ProductsService {
         performedBy: currentUser?.email || currentUser?.name || 'System',
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
+        branchId: currentUser?.branchId?.toString(),
       })
       .catch((logError) => {
         console.error('Failed to log stock update:', logError);
@@ -345,6 +348,7 @@ export class ProductsService {
         performedBy: currentUser?.email || currentUser?.name || 'System',
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
+        branchId: currentUser?.branchId?.toString(),
       })
       .catch((logError) => {
         console.error('Failed to log product deactivation:', logError);
@@ -401,6 +405,7 @@ export class ProductsService {
         performedBy: currentUser?.email || currentUser?.name || 'System',
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
+        branchId: currentUser?.branchId?.toString(),
       })
       .catch((logError) => {
         console.error('Failed to log product deletion:', logError);

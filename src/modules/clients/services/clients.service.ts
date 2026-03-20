@@ -56,6 +56,7 @@ export class ClientsService {
         performedBy: currentUser?.email || currentUser?.name || 'System',
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
+        branchId: currentUser?.branchId?.toString(),
       })
       .catch((logError) => {
         console.error('Failed to log client creation:', logError);
@@ -190,6 +191,7 @@ export class ClientsService {
         performedBy: currentUser?.email || currentUser?.name || 'System',
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
+        branchId: currentUser?.branchId?.toString(),
       })
       .catch((logError) => {
         console.error('Failed to log client update:', logError);
@@ -265,6 +267,7 @@ export class ClientsService {
         performedBy: currentUser?.email || currentUser?.name || 'System',
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
+        branchId: currentUser?.branchId?.toString(),
       })
       .catch((logError) => {
         console.error('Failed to log client transaction:', logError);
@@ -295,6 +298,7 @@ export class ClientsService {
         performedBy: currentUser?.email || currentUser?.name || 'System',
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
+        branchId: currentUser?.branchId?.toString(),
       })
       .catch((logError) => {
         console.error('Failed to log client deletion:', logError);
@@ -429,6 +433,7 @@ export class ClientsService {
         performedBy: currentUser?.email || currentUser?.name || 'System',
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
+        branchId: currentUser?.branchId?.toString(),
       })
       .catch((logError) => {
         console.error('Failed to log client block:', logError);
@@ -459,6 +464,7 @@ export class ClientsService {
         performedBy: currentUser?.email || currentUser?.name || 'System',
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
+        branchId: currentUser?.branchId?.toString(),
       })
       .catch((logError) => {
         console.error('Failed to log client unblock:', logError);

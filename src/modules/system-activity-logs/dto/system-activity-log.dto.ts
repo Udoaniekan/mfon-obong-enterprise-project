@@ -1,5 +1,6 @@
 import { IsString, IsNotEmpty, IsOptional, IsDate } from 'class-validator';
 
+
 export class CreateSystemActivityLogDto {
   @IsString()
   @IsNotEmpty()
@@ -24,4 +25,8 @@ export class CreateSystemActivityLogDto {
   @IsOptional()
   @IsDate()
   timestamp?: Date;
+
+  @IsOptional()
+  @IsString()
+  branchId?: string;
 }

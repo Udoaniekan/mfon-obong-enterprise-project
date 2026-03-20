@@ -20,6 +20,9 @@ export class SystemActivityLog {
   @Prop({ required: true })
   device: string;
 
+  @Prop()
+  branchId?: string;
+
   @Prop({ default: Date.now })
   timestamp: Date;
 }

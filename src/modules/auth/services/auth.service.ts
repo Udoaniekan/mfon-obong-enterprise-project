@@ -193,6 +193,7 @@ export class AuthService {
           performedBy: user.email || user.name,
           role: user.role,
           device: extractDeviceInfo(userAgent || ''),
+          branchId: user.branchId?.toString(),
         });
       } catch (logError) {
         // Don't fail login if logging fails
@@ -238,6 +239,7 @@ export class AuthService {
           performedBy: user.email || user.name,
           role: user.role,
           device: extractDeviceInfo(userAgent || ''),
+          branchId: user.branchId?.toString(),
         });
       } catch (logError) {
         // Don't fail logout if logging fails
