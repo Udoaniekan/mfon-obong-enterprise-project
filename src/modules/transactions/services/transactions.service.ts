@@ -591,12 +591,14 @@ export class TransactionsService {
         discount: 0,
       });
 
-      // Add returned quantity back to stock
-      await this.productsService.updateStock(returnItem.productId, {
-        quantity: returnItem.quantity,
-        unit: returnItem.unit,
-        operation: StockOperation.ADD,
-      });
+      // Add returned quantity back to stock (skip for wholesale returns)
+      if (!createTransactionDto.skipStockRestore) {
+        await this.productsService.updateStock(returnItem.productId, {
+          quantity: returnItem.quantity,
+          unit: returnItem.unit,
+          operation: StockOperation.ADD,
+        });
+      }
     }
 
     // Create the return transaction

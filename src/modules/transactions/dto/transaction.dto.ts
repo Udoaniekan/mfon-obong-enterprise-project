@@ -138,6 +138,10 @@ export class CreateTransactionDto {
   @IsNumber()
   @Min(0)
   actualAmountReturned?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  skipStockRestore?: boolean;
 }
 
 export class UpdateTransactionDto {
