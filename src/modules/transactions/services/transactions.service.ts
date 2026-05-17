@@ -114,9 +114,10 @@ export class TransactionsService {
     // Validate that additional charges are not applied to DEPOSIT transactions
     if (createTransactionDto.type === 'DEPOSIT') {
       const transportFare = createTransactionDto.transportFare || 0;
-      if (transportFare > 0 || loadingCharge > 0 || loadingAndOffloadingCharge > 0) {
+      const hasExtraCharges = (createTransactionDto.extraCharges || []).length > 0;
+      if (transportFare > 0 || loadingCharge > 0 || loadingAndOffloadingCharge > 0 || hasExtraCharges) {
         throw new BadRequestException(
-          'Transport fare, loading, and loadingAndOffloading charges cannot be applied to DEPOSIT transactions.'
+          'Transport fare, loading, loadingAndOffloading, and extra charges cannot be applied to DEPOSIT transactions.'
         );
       }
     }
@@ -177,8 +178,10 @@ export class TransactionsService {
     const transportFare = createTransactionDto.transportFare || 0;
     const loadingAndOffloading = createTransactionDto.loadingAndOffloading || 0;
     const loading = createTransactionDto.loading || 0;
-    
-    const total = subtotal - discount + transportFare + loadingAndOffloading + loading;
+    const extraCharges = createTransactionDto.extraCharges || [];
+    const extraChargesTotal = extraCharges.reduce((sum, c) => sum + (c.amount || 0), 0);
+
+    const total = subtotal - discount + transportFare + loadingAndOffloading + loading + extraChargesTotal;
     const amountPaid = createTransactionDto.amountPaid || 0;
 
     // Create transaction
@@ -240,6 +243,7 @@ export class TransactionsService {
       transportFare: createTransactionDto.transportFare || 0,
       loadingAndOffloading: createTransactionDto.loadingAndOffloading || 0,
       loading: createTransactionDto.loading || 0,
+      extraCharges,
       total,
       amountPaid,
       paymentMethod: createTransactionDto.paymentMethod,
@@ -390,7 +394,7 @@ export class TransactionsService {
             `Balance validation failed. Expected: ${newBalance}, Got: ${updatedClient.balance}`
           );
         }
-      } catch (ledgerErr) {
+      } catch (ledgerErr:any) {
         // Log the actual error for debugging
         console.error('❌ Client ledger update failed:', ledgerErr);
         console.error('Ledger details:', {
@@ -417,10 +421,10 @@ export class TransactionsService {
         // Delete the saved transaction
         try {
           await this.transactionModel.deleteOne({ _id: savedTransaction._id }, { session });
-        } catch (delErr) {
+        } catch (delErr:any) {
           console.error('Failed to delete transaction after ledger failure', delErr);
         }
-        throw new BadRequestException(`Failed to update client ledger: ${ledgerErr.message}. Transaction aborted.`);
+        throw new BadRequestException(`Failed to update client ledger: ${ledgerErr?.message}. Transaction aborted.`);
       }
     }
 
@@ -721,13 +725,13 @@ export class TransactionsService {
         clientBalance: newBalance,
         clientBalanceAfterTransaction: newBalance,
       };
-    } catch (error) {
+    } catch (error:any) {
       // Rollback transaction on error
       await session.abortTransaction();
       await session.endSession();
       
       console.error('❌ RETURN transaction creation failed:', error);
-      throw new BadRequestException(`Failed to create return transaction: ${error.message}`);
+      throw new BadRequestException(`Failed to create return transaction: ${error?.message}`);
     }
   }
 

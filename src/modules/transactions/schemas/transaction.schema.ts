@@ -2,6 +2,17 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema, Types } from 'mongoose';
 export type TransactionDocument = Transaction & Document;
 
+@Schema({ _id: false })
+export class ExtraCharge {
+  @Prop({ required: true })
+  name: string;
+
+  @Prop({ required: true })
+  amount: number;
+}
+
+export const ExtraChargeSchema = SchemaFactory.createForClass(ExtraCharge);
+
 @Schema({ timestamps: true })
 export class TransactionItem {
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Product', required: true })
@@ -81,6 +92,9 @@ export class Transaction {
 
   @Prop({ default: 0 })
   loading: number;
+
+  @Prop({ type: [ExtraChargeSchema], default: [] })
+  extraCharges: ExtraCharge[];
 
   @Prop({ required: true })
   total: number;

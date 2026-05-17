@@ -14,6 +14,16 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
+export class ExtraChargeDto {
+  @IsString()
+  @IsNotEmpty()
+  name: string;
+
+  @IsNumber()
+  @Min(0)
+  amount: number;
+}
+
 export class WalkInClientDto {
   @IsString()
   name: string;
@@ -142,6 +152,12 @@ export class CreateTransactionDto {
   @IsOptional()
   @IsBoolean()
   skipStockRestore?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ExtraChargeDto)
+  extraCharges?: ExtraChargeDto[];
 }
 
 export class UpdateTransactionDto {
@@ -235,6 +251,12 @@ export class CalculateTransactionDto {
   @IsNumber()
   @Min(0)
   amountPaid?: number;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ExtraChargeDto)
+  extraCharges?: ExtraChargeDto[];
 
   @IsMongoId()
   branchId: string;
