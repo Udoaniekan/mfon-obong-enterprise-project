@@ -120,7 +120,7 @@ export class ClientsController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER)
+  @Roles(UserRole.SUPER_ADMIN)
   async update(
     @Param('id') id: string,
     @Body() updateClientDto: UpdateClientDto,
@@ -156,19 +156,19 @@ export class ClientsController {
   }
 
   @Patch(':id/block')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER)
+  @Roles(UserRole.SUPER_ADMIN)
   async blockClient(@Param('id') id: string, @Request() req): Promise<Client> {
     return this.clientsService.blockClient(id, req.user);
   }
 
   @Patch(':id/unblock')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER)
+  @Roles(UserRole.SUPER_ADMIN)
   async unblockClient(@Param('id') id: string, @Request() req): Promise<Client> {
     return this.clientsService.unblockClient(id, req.user);
   }
 
   @Delete(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER, UserRole.ADMIN)
+  @Roles(UserRole.SUPER_ADMIN)
   async remove(@Param('id') id: string, @Request() req): Promise<void> {
     return this.clientsService.remove(id, req.user);
   }
