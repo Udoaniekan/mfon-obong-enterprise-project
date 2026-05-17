@@ -158,6 +158,10 @@ export class CreateTransactionDto {
   @ValidateNested({ each: true })
   @Type(() => ExtraChargeDto)
   extraCharges?: ExtraChargeDto[];
+
+  @IsOptional()
+  @IsString()
+  waybillNumber?: string;
 }
 
 export class UpdateTransactionDto {

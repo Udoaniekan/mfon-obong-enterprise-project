@@ -232,6 +232,11 @@ export class TransactionsService {
     // Determine accounting date (used both for transaction.date and invoice prefix)
     const accountingDate = createTransactionDto.date ? new Date(createTransactionDto.date) : new Date();
 
+    // Resolve waybill number: use provided value or auto-generate for PURCHASE
+    const waybillNumber = createTransactionDto.type === 'PURCHASE'
+      ? (createTransactionDto.waybillNumber || await this.generateWaybillNumber())
+      : undefined;
+
     const transaction = new this.transactionModel({
       invoiceNumber: await this.generateInvoiceNumber(accountingDate),
       clientId,
@@ -254,6 +259,7 @@ export class TransactionsService {
       isPickedUp: false,
       // Use provided accounting date (backdate) or default to now
       date: accountingDate,
+      waybillNumber,
       clientBalanceAfterTransaction: null, // Will be updated after client ledger update
     });
 
@@ -847,6 +853,9 @@ export class TransactionsService {
     // Determine accounting date (used both for transaction.date and invoice prefix)
     const accountingDate = createTransactionDto.date ? new Date(createTransactionDto.date) : new Date();
 
+    // Resolve waybill number: use provided value or auto-generate for WHOLESALE
+    const waybillNumber = createTransactionDto.waybillNumber || await this.generateWaybillNumber();
+
     const transaction = new this.transactionModel({
       invoiceNumber: await this.generateInvoiceNumber(accountingDate),
       clientId,
@@ -866,6 +875,7 @@ export class TransactionsService {
       type: createTransactionDto.type,
       isPickedUp: false, // WHOLESALE is not picked up by default
       date: accountingDate,
+      waybillNumber,
       clientBalanceAfterTransaction: null, // Will be updated after client ledger update
     });
 
