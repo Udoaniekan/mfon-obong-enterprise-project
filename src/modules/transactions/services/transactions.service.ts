@@ -155,8 +155,14 @@ export class TransactionsService {
             throw new BadRequestException(
               `Insufficient stock for ${product.name}. Available: ${product.stock} ${product.unit}`,
             );
-          } // Calculate price
-          const price = product.unitPrice * item.quantity;
+          }
+
+          // Use staff-overridden unit price if provided, otherwise fall back to product default
+          const effectiveUnitPrice = (item.unitPrice && item.unitPrice > 0)
+            ? item.unitPrice
+            : product.unitPrice;
+
+          const price = effectiveUnitPrice * item.quantity;
           const itemSubtotal = price - (item.discount || 0);
           subtotal += itemSubtotal;
 
@@ -165,7 +171,7 @@ export class TransactionsService {
             productName: product.name,
             quantity: item.quantity,
             unit: item.unit,
-            unitPrice: price / item.quantity,
+            unitPrice: effectiveUnitPrice,
             discount: item.discount || 0,
             subtotal: itemSubtotal,
           };
@@ -233,9 +239,18 @@ export class TransactionsService {
     const accountingDate = createTransactionDto.date ? new Date(createTransactionDto.date) : new Date();
 
     // Resolve waybill number: use provided value or auto-generate for PURCHASE
-    const waybillNumber = createTransactionDto.type === 'PURCHASE'
-      ? (createTransactionDto.waybillNumber || await this.generateWaybillNumber())
-      : undefined;
+    let waybillNumber: string | undefined;
+    if (createTransactionDto.type === 'PURCHASE') {
+      if (createTransactionDto.waybillNumber) {
+        const existing = await this.transactionModel.findOne({ waybillNumber: createTransactionDto.waybillNumber });
+        if (existing) {
+          throw new ConflictException(`Waybill number "${createTransactionDto.waybillNumber}" is already in use`);
+        }
+        waybillNumber = createTransactionDto.waybillNumber;
+      } else {
+        waybillNumber = await this.generateWaybillNumber();
+      }
+    }
 
     const transaction = new this.transactionModel({
       invoiceNumber: await this.generateInvoiceNumber(accountingDate),
@@ -854,7 +869,16 @@ export class TransactionsService {
     const accountingDate = createTransactionDto.date ? new Date(createTransactionDto.date) : new Date();
 
     // Resolve waybill number: use provided value or auto-generate for WHOLESALE
-    const waybillNumber = createTransactionDto.waybillNumber || await this.generateWaybillNumber();
+    let waybillNumber: string;
+    if (createTransactionDto.waybillNumber) {
+      const existing = await this.transactionModel.findOne({ waybillNumber: createTransactionDto.waybillNumber });
+      if (existing) {
+        throw new ConflictException(`Waybill number "${createTransactionDto.waybillNumber}" is already in use`);
+      }
+      waybillNumber = createTransactionDto.waybillNumber;
+    } else {
+      waybillNumber = await this.generateWaybillNumber();
+    }
 
     const transaction = new this.transactionModel({
       invoiceNumber: await this.generateInvoiceNumber(accountingDate),
@@ -1053,7 +1077,7 @@ export class TransactionsService {
       .find(filter)
       .populate('clientId', 'name phone balance')
       .populate('userId', 'name role')
-      .sort({ createdAt: -1 })
+      .sort({ date: -1 })
       .exec();
   }
 
@@ -1075,7 +1099,7 @@ export class TransactionsService {
       .find({ branchId })
       .populate('clientId', 'name phone balance')
       .populate('userId', 'name role')
-      .sort({ createdAt: -1 });
+      .sort({ date: -1 });
 
     return transactions;
   }
@@ -1085,7 +1109,7 @@ export class TransactionsService {
       .find({ userId: new Types.ObjectId(userId) })
       .populate('clientId', 'name phone')
       .populate('userId', 'name role')
-      .sort({ createdAt: -1 });
+      .sort({ date: -1 });
 
     return transactions;
   }
@@ -1095,7 +1119,7 @@ export class TransactionsService {
       .find({ clientId: new Types.ObjectId(clientId) })
       .populate('clientId', 'name phone')
       .populate('userId', 'name role')
-      .sort({ createdAt: -1 });
+      .sort({ date: -1 });
 
     return transactions;
   }
@@ -1522,15 +1546,26 @@ export class TransactionsService {
   }
 
   /**
-   * Generates a new waybill number (does not save to DB)
+   * Generates a unique waybill number using an atomic counter (race-condition safe)
    */
   async generateWaybillNumber(): Promise<string> {
     const date = new Date();
     const prefix = `WB${date.getFullYear()}${(date.getMonth() + 1).toString().padStart(2, '0')}${date.getDate().toString().padStart(2, '0')}`;
-    const count = await this.transactionModel.countDocuments({
-      waybillNumber: { $regex: `^${prefix}` },
-    });
-    return `${prefix}-${(count + 1).toString().padStart(4, '0')}`;
+    const countersCollection = this.transactionModel.db.collection('waybill_counters');
+
+    const res = await countersCollection.findOneAndUpdate(
+      { _id: prefix } as any,
+      { $inc: { seq: 1 } } as any,
+      { upsert: true, returnDocument: 'after' } as any,
+    );
+
+    let seq = (res as any).value?.seq;
+    if (!seq) {
+      const doc = await countersCollection.findOne({ _id: prefix } as any);
+      seq = (doc as any)?.seq;
+    }
+    seq = seq || 1;
+    return `${prefix}-${seq.toString().padStart(4, '0')}`;
   }
 
   /**
@@ -1617,7 +1652,7 @@ export class TransactionsService {
     const transactions = await this.transactionModel
       .find(filter)
       .populate('branchId', 'name')
-      .sort({ createdAt: -1 })
+      .sort({ date: -1 })
       .limit(10);
 
     return {

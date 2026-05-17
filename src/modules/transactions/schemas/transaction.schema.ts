@@ -118,7 +118,7 @@ export class Transaction {
   @Prop({ required: true, type: Types.ObjectId, ref: 'Branch' })
   branchId: Types.ObjectId;
 
-  @Prop({ type: String, default: null })
+  @Prop({ type: String, default: null, unique: true, sparse: true })
   waybillNumber?: string;
 
   @Prop({
