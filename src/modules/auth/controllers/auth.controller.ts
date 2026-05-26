@@ -54,9 +54,11 @@ export class AuthController {
     res.cookie('accessToken', result.access_token, cookieOptions.accessToken);
     res.cookie('refreshToken', result.refresh_token, cookieOptions.refreshToken);
     
-    // Return user info without tokens
+    // Return tokens in body so clients that can't read httpOnly cookies can update localStorage
     return {
       user: result.user,
+      access_token: result.access_token,
+      refresh_token: result.refresh_token,
       message: 'Token refreshed successfully'
     };
   }

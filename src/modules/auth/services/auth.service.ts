@@ -10,6 +10,7 @@ import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../../users/services/users.service';
 import { Otp } from '../schemas/otp.schema';
 import { RefreshToken } from '../schemas/refresh-token.schema';
+import { BlacklistedToken } from '../schemas/blacklisted-token.schema';
 import { generateOTP, getOTPExpiry } from '../utils/otp.util';
 import { sendOTPEmail } from '../utils/mailer.util';
 import { SystemActivityLogService } from '../../system-activity-logs/services/system-activity-log.service';
@@ -18,13 +19,12 @@ import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class AuthService {
-  private blacklistedTokens = new Set<string>(); // In-memory token blacklist
-
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     @InjectModel(Otp.name) private readonly otpModel: Model<Otp>,
     @InjectModel(RefreshToken.name) private readonly refreshTokenModel: Model<RefreshToken>,
+    @InjectModel(BlacklistedToken.name) private readonly blacklistedTokenModel: Model<BlacklistedToken>,
     private readonly systemActivityLogService: SystemActivityLogService,
   ) {}
   // MAINTAINER requests OTP to their email for password reset
@@ -138,7 +138,7 @@ export class AuthService {
         branch: result.branch || 'HEAD_OFFICE', // Provide default for existing users
         branchId: user.branchId ? user.branchId.toString() : null, // Convert ObjectId to string
       };
-    } catch (error) {
+    } catch (error: any) {
       throw new UnauthorizedException(error.message);
     }
   }
@@ -150,7 +150,7 @@ export class AuthService {
         throw new UnauthorizedException('User not found');
       }
       return user;
-    } catch (error) {
+    } catch (error: any) {
       throw new UnauthorizedException('Invalid user');
     }
   }
@@ -213,9 +213,9 @@ export class AuthService {
           profilePicture: user.profilePicture,
         },
       };
-    } catch (error) {
+    } catch (error: any) {
       throw new Error(
-        'Failed to generate authentication token: ' + error.message,
+        'Failed to generate authentication token: ' + error?.message,
       );
     }
   }
@@ -226,9 +226,15 @@ export class AuthService {
     userAgent?: string,
   ): Promise<{ message: string }> {
     try {
-      // Add token to blacklist
+      // Persist blacklisted access token in DB (survives server restarts)
       if (token) {
-        this.blacklistedTokens.add(token);
+        let expiresAt = new Date(Date.now() + 60 * 60 * 1000); // default 1 hour
+        try {
+          const decoded = this.jwtService.decode(token) as any;
+          if (decoded?.exp) expiresAt = new Date(decoded.exp * 1000);
+        } catch {}
+        // ignore duplicate-key errors if token was already blacklisted
+        await this.blacklistedTokenModel.create({ token, expiresAt }).catch(() => {});
       }
 
       // Log logout activity
@@ -246,13 +252,14 @@ export class AuthService {
       }
 
       return { message: 'Logout successful' };
-    } catch (error) {
-      throw new Error('Logout failed: ' + error.message);
+    } catch (error: any) {
+      throw new Error('Logout failed: ' + error?.message);
     }
   }
 
-  isTokenBlacklisted(token: string): boolean {
-    return this.blacklistedTokens.has(token);
+  async isTokenBlacklisted(token: string): Promise<boolean> {
+    const doc = await this.blacklistedTokenModel.findOne({ token }).lean();
+    return !!doc;
   }
 
   async getRefreshTokenData(refreshToken: string) {

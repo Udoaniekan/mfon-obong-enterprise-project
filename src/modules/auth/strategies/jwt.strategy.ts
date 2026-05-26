@@ -46,8 +46,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       token = ExtractJwt.fromAuthHeaderAsBearerToken()(req);
     }
 
-    // Check if token is blacklisted
-    if (token && this.authService.isTokenBlacklisted(token)) {
+    // Check if token is blacklisted (DB-backed, survives restarts)
+    if (token && await this.authService.isTokenBlacklisted(token)) {
       throw new UnauthorizedException('Token has been invalidated');
     }
 
