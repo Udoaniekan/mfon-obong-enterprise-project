@@ -3,142 +3,142 @@ import {
   NotFoundException,
   ConflictException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-import { Category, CategoryDocument } from '../schemas/category.schema';
+import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateCategoryDto, UpdateCategoryDto } from '../dto/category.dto';
-import { UserDocument } from '../../users/schemas/user.schema';
-import { UserRole } from '../../../common/enums';
 import { SystemActivityLogService } from 'src/modules/system-activity-logs/services/system-activity-log.service';
 import { extractDeviceInfo } from 'src/modules/system-activity-logs/utils/device-extractor.util';
 
 @Injectable()
 export class CategoriesService {
   constructor(
-    @InjectModel(Category.name) private categoryModel: Model<CategoryDocument>,
+    private readonly prisma: PrismaService,
     private readonly systemActivityLogService: SystemActivityLogService,
   ) {}
 
+  private toDoc(category: any) {
+    if (!category) return category;
+    return { ...category, _id: category.id };
+  }
+
   async create(
     createCategoryDto: CreateCategoryDto,
-    currentUser?: UserDocument,
-    userAgent?:string
-  ): Promise<CategoryDocument> {
+    currentUser?: any,
+    userAgent?: string,
+  ): Promise<any> {
+    // If a soft-deleted category with this name exists, reactivate it
+    const existing = await this.prisma.category.findUnique({
+      where: { name: createCategoryDto.name },
+    });
+
+    if (existing) {
+      if (existing.isActive) {
+        throw new ConflictException('Category name already exists');
+      }
+      const category = await this.prisma.category.update({
+        where: { id: existing.id },
+        data: {
+          isActive: true,
+          units: createCategoryDto.units || existing.units,
+          description: createCategoryDto.description ?? existing.description,
+        },
+      });
+      return this.toDoc(category);
+    }
+
     try {
-      const category = new this.categoryModel({
-        ...createCategoryDto,
+      const category = await this.prisma.category.create({
+        data: {
+          name: createCategoryDto.name,
+          units: createCategoryDto.units || [],
+          description: createCategoryDto.description,
+        },
       });
 
-      // Log branch creation
-            try {
-              await this.systemActivityLogService.createLog({
-                action: 'CATEGORY_CREATED',
-                details: ` ${category.name} has been created`,
-                performedBy: currentUser?.email || currentUser?.name || 'System',
-                role: currentUser?.role || 'SYSTEM',
-                device: extractDeviceInfo(userAgent) || '',
-              });
-            } catch (logError) {
-              console.error('Failed to log branch creation:', logError);
-            }
+      try {
+        await this.systemActivityLogService.createLog({
+          action: 'CATEGORY_CREATED',
+          details: `${category.name} has been created`,
+          performedBy: currentUser?.email || currentUser?.name || 'System',
+          role: currentUser?.role || 'SYSTEM',
+          device: extractDeviceInfo(userAgent) || '',
+        });
+      } catch {}
 
-      return await category.save();
+      return this.toDoc(category);
     } catch (error) {
-      if (error.code === 11000) {
+      if (error?.code === 'P2002') {
         throw new ConflictException('Category name already exists');
       }
       throw error;
     }
   }
 
-  async findAll(
-    currentUser?: UserDocument,
-    includeInactive = false,
-  ): Promise<CategoryDocument[]> {
-    const filter: any = includeInactive ? {} : { isActive: true };
-
-    // Categories are global - all users can see all categories
-    return this.categoryModel.find(filter).exec();
+  async findAll(currentUser?: any, includeInactive = false): Promise<any[]> {
+    const where: any = includeInactive ? {} : { isActive: true };
+    const categories = await this.prisma.category.findMany({ where });
+    return categories.map(this.toDoc);
   }
-  async findById(
-    id: string,
-    currentUser?: UserDocument,
-  ): Promise<CategoryDocument> {
-    try {
-      // Check if we've received a stringified object instead of a simple ID
-      if (id.includes('ObjectId') && id.includes('_id')) {
-        // Extract the ObjectId from the string
-        const match = id.match(/ObjectId\('([0-9a-fA-F]{24})'\)/);
-        if (match && match[1]) {
-          // Use the extracted ID
-          id = match[1];
-        }
-      }
 
-      // Categories are global - no branch filtering needed
-      const category = await this.categoryModel.findById(id);
-
-      if (!category) {
-        throw new NotFoundException('Category not found');
-      }
-      return category;
-    } catch (error) {
-      console.error('Error finding category:', error);
-      throw new NotFoundException(`Category lookup failed: ${error.message}`);
+  async findById(id: string, currentUser?: any): Promise<any> {
+    // Handle stringified ObjectId format (legacy)
+    if (id.includes('ObjectId') && id.includes('_id')) {
+      const match = id.match(/ObjectId\('([0-9a-fA-F]{24})'\)/);
+      if (match?.[1]) id = match[1];
     }
+
+    const category = await this.prisma.category.findUnique({ where: { id } });
+    if (!category) throw new NotFoundException('Category not found');
+    return this.toDoc(category);
   }
 
-  async findByName(
-    name: string,
-    currentUser?: UserDocument,
-  ): Promise<CategoryDocument | null> {
-    // Categories are global - search by name only
-    return this.categoryModel.findOne({ name }).exec();
+  async findByName(name: string, currentUser?: any): Promise<any> {
+    const category = await this.prisma.category.findUnique({ where: { name } });
+    return category ? this.toDoc(category) : null;
   }
 
   async update(
     id: string,
     updateCategoryDto: UpdateCategoryDto,
-    currentUser?: UserDocument,
-  ): Promise<CategoryDocument> {
-    const category = await this.findById(id, currentUser);
-
+    currentUser?: any,
+  ): Promise<any> {
+    await this.findById(id, currentUser);
     try {
-      Object.assign(category, updateCategoryDto);
-      return await category.save();
+      const category = await this.prisma.category.update({
+        where: { id },
+        data: updateCategoryDto,
+      });
+      return this.toDoc(category);
     } catch (error) {
-      if (error.code === 11000) {
+      if (error?.code === 'P2002') {
         throw new ConflictException('Category name already exists');
       }
       throw error;
     }
   }
 
-  async remove(id: string, currentUser?: UserDocument, 
-    userAgent?: string,
-  ): Promise<void> {
+  async remove(id: string, currentUser?: any, userAgent?: string): Promise<void> {
     const category = await this.findById(id, currentUser);
-    category.isActive = false;
-    const savedCategory = await category.save();
 
-    // Log branch creation
-      try {
-        await this.systemActivityLogService.createLog({
-          action: 'CATEGORY_DELETED',
-          details: ` ${category.name} has been DELETED.`,
-          performedBy: currentUser?.email || currentUser?.name || 'System',
-          role: currentUser?.role || 'SYSTEM',
-          device: extractDeviceInfo(userAgent) || '',
-        });
-      } catch (logError) {
-        console.error('Failed to log branch creation:', logError);
-      }
+    await this.prisma.category.update({
+      where: { id },
+      data: { isActive: false },
+    });
+
+    try {
+      await this.systemActivityLogService.createLog({
+        action: 'CATEGORY_DELETED',
+        details: `${category.name} has been DELETED.`,
+        performedBy: currentUser?.email || currentUser?.name || 'System',
+        role: currentUser?.role || 'SYSTEM',
+        device: extractDeviceInfo(userAgent) || '',
+      });
+    } catch {}
   }
 
   async validateCategoryAndUnit(
     categoryId: string,
     unit: string,
-    currentUser?: UserDocument,
+    currentUser?: any,
   ): Promise<boolean> {
     const category = await this.findById(categoryId, currentUser);
     return category.units.includes(unit);

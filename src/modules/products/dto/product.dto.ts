@@ -4,7 +4,6 @@ import {
   IsOptional,
   IsString,
   Min,
-  IsMongoId,
   IsEnum,
 } from 'class-validator';
 
@@ -14,7 +13,7 @@ export class CreateProductDto {
   name: string;
 
   @IsNotEmpty()
-  @IsMongoId()
+  @IsString()
   categoryId: string;
 
   @IsNotEmpty()
@@ -37,7 +36,7 @@ export class CreateProductDto {
   minStockLevel: number;
 
   @IsNotEmpty()
-  @IsMongoId()
+  @IsString()
   branchId: string;
 }
 
@@ -47,7 +46,7 @@ export class UpdateProductDto {
   name?: string;
 
   @IsOptional()
-  @IsMongoId()
+  @IsString()
   categoryId?: string;
 
   @IsOptional()
@@ -70,7 +69,7 @@ export class UpdateProductDto {
   minStockLevel?: number;
 
   @IsOptional()
-  @IsMongoId()
+  @IsString()
   branchId?: string;
 }
 

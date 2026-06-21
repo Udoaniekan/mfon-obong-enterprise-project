@@ -4,30 +4,24 @@ import {
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
 import { JwtService } from '@nestjs/jwt';
+import * as bcrypt from 'bcrypt';
+import { PrismaService } from '../../../prisma/prisma.service';
 import { UsersService } from '../../users/services/users.service';
-import { Otp } from '../schemas/otp.schema';
-import { RefreshToken } from '../schemas/refresh-token.schema';
-import { BlacklistedToken } from '../schemas/blacklisted-token.schema';
 import { generateOTP, getOTPExpiry } from '../utils/otp.util';
 import { sendOTPEmail } from '../utils/mailer.util';
 import { SystemActivityLogService } from '../../system-activity-logs/services/system-activity-log.service';
 import { extractDeviceInfo } from '../../system-activity-logs/utils/device-extractor.util';
-import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
-    @InjectModel(Otp.name) private readonly otpModel: Model<Otp>,
-    @InjectModel(RefreshToken.name) private readonly refreshTokenModel: Model<RefreshToken>,
-    @InjectModel(BlacklistedToken.name) private readonly blacklistedTokenModel: Model<BlacklistedToken>,
+    private readonly prisma: PrismaService,
     private readonly systemActivityLogService: SystemActivityLogService,
   ) {}
-  // MAINTAINER requests OTP to their email for password reset
+
   async requestOtp(
     email: string,
     userId: string,
@@ -35,24 +29,19 @@ export class AuthService {
   ): Promise<{ message: string }> {
     const user = await this.usersService.findByEmail(email);
     if (!user) throw new BadRequestException('Maintainer email not found');
-    if (user.role !== 'MAINTAINER')
-      throw new ForbiddenException('Only MAINTAINER can request OTP');
+    if (user.role !== 'MAINTAINER') throw new ForbiddenException('Only MAINTAINER can request OTP');
 
-    // Generate OTP and expiry
     const otp = generateOTP();
-    const expiresAt = getOTPExpiry(10); // 10 minutes expiry
+    const expiresAt = getOTPExpiry(10);
 
-    // Save OTP in DB (invalidate previous unused OTPs for this user/email)
-    await this.otpModel.updateMany(
-      { email, userId, used: false },
-      { used: true },
-    );
-    await this.otpModel.create({ email, otp, userId, expiresAt });
+    await this.prisma.otp.updateMany({
+      where: { email, userId, used: false },
+      data: { used: true },
+    });
+    await this.prisma.otp.create({ data: { email, otp, userId, expiresAt } });
 
-    // Send OTP email
     await sendOTPEmail(email, otp);
 
-    // Log OTP request activity
     try {
       await this.systemActivityLogService.createLog({
         action: 'OTP_REQUESTED',
@@ -61,14 +50,11 @@ export class AuthService {
         role: user.role,
         device: device || 'System',
       });
-    } catch (logError) {
-      // Don't fail if logging fails
-    }
+    } catch {}
 
     return { message: 'OTP sent to MAINTAINER email' };
   }
 
-  // MAINTAINER verifies OTP and resets user's password
   async verifyOtpAndResetPassword(
     email: string,
     userId: string,
@@ -76,25 +62,21 @@ export class AuthService {
     newPassword: string,
     device?: string,
   ): Promise<{ message: string }> {
-    const otpDoc = await this.otpModel.findOne({
-      email,
-      userId,
-      otp,
-      used: false,
+    const otpDoc = await this.prisma.otp.findFirst({
+      where: { email, userId, otp, used: false },
     });
     if (!otpDoc) throw new BadRequestException('Invalid OTP');
-    if (otpDoc.expiresAt < new Date())
-      throw new BadRequestException('OTP expired');
+    if (otpDoc.expiresAt < new Date()) throw new BadRequestException('OTP expired');
 
-    // Mark OTP as used
-    otpDoc.used = true;
-    await otpDoc.save();
+    await this.prisma.otp.update({ where: { id: otpDoc.id }, data: { used: true } });
 
-    // Reset the user's password with temporary password
     const verifyingUser = await this.usersService.findByEmail(email);
-    const resetResult = await this.usersService.forgotPassword(userId, { email: verifyingUser.email, role: verifyingUser.role, name: verifyingUser.name }, device);
+    await this.usersService.forgotPassword(userId, {
+      email: verifyingUser.email,
+      role: verifyingUser.role,
+      name: verifyingUser.name,
+    }, device);
 
-    // Log OTP verification and password reset
     try {
       await this.systemActivityLogService.createLog({
         action: 'OTP_VERIFIED',
@@ -103,9 +85,7 @@ export class AuthService {
         role: verifyingUser?.role || 'MAINTAINER',
         device: device || 'System',
       });
-    } catch (logError) {
-      // Don't fail if logging fails
-    }
+    } catch {}
 
     return { message: 'Password reset successfully' };
   }
@@ -113,30 +93,23 @@ export class AuthService {
   async validateUser(email: string, password: string): Promise<any> {
     try {
       const user = await this.usersService.findByEmail(email);
-      if (!user) {
-        throw new UnauthorizedException('User not found');
-      }
+      if (!user) throw new UnauthorizedException('User not found');
 
       const isPasswordValid = await bcrypt.compare(password, user.password);
-      if (!isPasswordValid) {
-        throw new UnauthorizedException('Invalid password');
-      }
+      if (!isPasswordValid) throw new UnauthorizedException('Invalid password');
 
-      // Check if user is inactive (soft deleted)
       if (!user.isActive) {
         throw new UnauthorizedException('Account has been deactivated. Please contact administrator.');
       }
-
-      // Check if user is blocked
       if (user.isBlocked) {
         throw new UnauthorizedException(`Account has been suspended. Reason: ${user.blockReason || 'Contact administrator for details.'}`);
       }
-      
-      const { password: _, ...result } = user.toJSON();
+
+      const { password: _, ...result } = user;
       return {
         ...result,
-        branch: result.branch || 'HEAD_OFFICE', // Provide default for existing users
-        branchId: user.branchId ? user.branchId.toString() : null, // Convert ObjectId to string
+        branch: result.branch || 'HEAD_OFFICE',
+        branchId: user.branchId || null,
       };
     } catch (error: any) {
       throw new UnauthorizedException(error.message);
@@ -146,19 +119,18 @@ export class AuthService {
   async validateUserById(userId: string): Promise<any> {
     try {
       const user = await this.usersService.findByIdRaw(userId);
-      if (!user) {
-        throw new UnauthorizedException('User not found');
-      }
+      if (!user) throw new UnauthorizedException('User not found');
       return user;
     } catch (error: any) {
       throw new UnauthorizedException('Invalid user');
     }
   }
+
   async login(user: any, userAgent?: string) {
     try {
       const payload = {
         email: user.email,
-        sub: user._id ? user._id.toString() : user.id,
+        sub: user.id || user._id,
         role: user.role,
         name: user.name,
         branch: user.branch,
@@ -167,25 +139,24 @@ export class AuthService {
 
       const access_token = this.jwtService.sign(payload, { expiresIn: '1h' });
 
-      // Generate refresh token
       const refreshPayload = {
         email: user.email,
-        sub: user._id ? user._id.toString() : user.id,
-        type: 'refresh'
+        sub: user.id || user._id,
+        type: 'refresh',
       };
       const refresh_token = this.jwtService.sign(refreshPayload, { expiresIn: '7d' });
 
-      // Store refresh token in database (persisted across restarts)
-      const expiresAt = new Date(Date.now() + (7 * 24 * 60 * 60 * 1000)); // 7 days from now
-      await this.refreshTokenModel.create({
-        token: refresh_token,
-        userId: refreshPayload.sub,
-        email: refreshPayload.email,
-        expiresAt,
-        userAgent: extractDeviceInfo(userAgent || ''),
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      await this.prisma.refreshToken.create({
+        data: {
+          token: refresh_token,
+          userId: refreshPayload.sub,
+          email: refreshPayload.email,
+          expiresAt,
+          userAgent: extractDeviceInfo(userAgent || ''),
+        },
       });
 
-      // Log successful login activity
       try {
         await this.systemActivityLogService.createLog({
           action: 'LOGIN',
@@ -195,11 +166,8 @@ export class AuthService {
           device: extractDeviceInfo(userAgent || ''),
           branchId: user.branchId?.toString(),
         });
-      } catch (logError) {
-        // Don't fail login if logging fails
-      }
+      } catch {}
 
-      // Direct format, not nested inside data property
       return {
         access_token,
         refresh_token,
@@ -214,9 +182,7 @@ export class AuthService {
         },
       };
     } catch (error: any) {
-      throw new Error(
-        'Failed to generate authentication token: ' + error?.message,
-      );
+      throw new Error('Failed to generate authentication token: ' + error?.message);
     }
   }
 
@@ -226,18 +192,15 @@ export class AuthService {
     userAgent?: string,
   ): Promise<{ message: string }> {
     try {
-      // Persist blacklisted access token in DB (survives server restarts)
       if (token) {
-        let expiresAt = new Date(Date.now() + 60 * 60 * 1000); // default 1 hour
+        let expiresAt = new Date(Date.now() + 60 * 60 * 1000);
         try {
           const decoded = this.jwtService.decode(token) as any;
           if (decoded?.exp) expiresAt = new Date(decoded.exp * 1000);
         } catch {}
-        // ignore duplicate-key errors if token was already blacklisted
-        await this.blacklistedTokenModel.create({ token, expiresAt }).catch(() => {});
+        await this.prisma.blacklistedToken.create({ data: { token, expiresAt } }).catch(() => {});
       }
 
-      // Log logout activity
       try {
         await this.systemActivityLogService.createLog({
           action: 'LOGOUT',
@@ -247,9 +210,7 @@ export class AuthService {
           device: extractDeviceInfo(userAgent || ''),
           branchId: user.branchId?.toString(),
         });
-      } catch (logError) {
-        // Don't fail logout if logging fails
-      }
+      } catch {}
 
       return { message: 'Logout successful' };
     } catch (error: any) {
@@ -258,105 +219,96 @@ export class AuthService {
   }
 
   async isTokenBlacklisted(token: string): Promise<boolean> {
-    const doc = await this.blacklistedTokenModel.findOne({ token }).lean();
+    const doc = await this.prisma.blacklistedToken.findUnique({ where: { token } });
     return !!doc;
   }
 
   async getRefreshTokenData(refreshToken: string) {
-    return await this.refreshTokenModel.findOne({ token: refreshToken, revoked: false });
+    return this.prisma.refreshToken.findFirst({
+      where: { token: refreshToken, revoked: false },
+    });
   }
 
   async invalidateRefreshToken(refreshToken: string) {
-    await this.refreshTokenModel.updateOne(
-      { token: refreshToken },
-      { revoked: true }
-    );
+    await this.prisma.refreshToken.updateMany({
+      where: { token: refreshToken },
+      data: { revoked: true },
+    });
   }
 
-  // Refresh Token Methods
   async refreshToken(refreshToken: string, userAgent?: string) {
     try {
-      // Check if refresh token exists in database
-      const tokenDoc = await this.refreshTokenModel.findOne({
-        token: refreshToken,
-        revoked: false,
+      const tokenDoc = await this.prisma.refreshToken.findFirst({
+        where: { token: refreshToken, revoked: false },
       });
 
-      if (!tokenDoc) {
-        throw new UnauthorizedException('Invalid refresh token');
-      }
+      if (!tokenDoc) throw new UnauthorizedException('Invalid refresh token');
 
-      // Check if token is expired
       if (new Date() > tokenDoc.expiresAt) {
-        await this.refreshTokenModel.updateOne(
-          { _id: tokenDoc._id },
-          { revoked: true }
-        );
+        await this.prisma.refreshToken.update({
+          where: { id: tokenDoc.id },
+          data: { revoked: true },
+        });
         throw new UnauthorizedException('Refresh token expired');
       }
 
-      // Verify JWT signature
-      let decodedToken;
+      let decodedToken: any;
       try {
         decodedToken = this.jwtService.verify(refreshToken);
-      } catch (error) {
-        await this.refreshTokenModel.updateOne(
-          { _id: tokenDoc._id },
-          { revoked: true }
-        );
+      } catch {
+        await this.prisma.refreshToken.update({
+          where: { id: tokenDoc.id },
+          data: { revoked: true },
+        });
         throw new UnauthorizedException('Invalid refresh token signature');
       }
 
-      // Validate token type
       if (decodedToken.type !== 'refresh') {
         throw new UnauthorizedException('Invalid token type');
       }
 
-      // Get fresh user data
       const user = await this.usersService.findByEmail(tokenDoc.email);
       if (!user || !user.isActive) {
-        await this.refreshTokenModel.updateOne(
-          { _id: tokenDoc._id },
-          { revoked: true }
-        );
+        await this.prisma.refreshToken.update({
+          where: { id: tokenDoc.id },
+          data: { revoked: true },
+        });
         throw new UnauthorizedException('User not found or inactive');
       }
 
-      // Generate new access token
       const payload = {
         email: user.email,
-        sub: user._id.toString(),
+        sub: user.id || user._id,
         role: user.role,
         name: user.name,
         branch: user.branch,
-        branchId: user.branchId ? user.branchId.toString() : null,
+        branchId: user.branchId || null,
       };
       const access_token = this.jwtService.sign(payload, { expiresIn: '1h' });
 
-      // Generate new refresh token (token rotation for security)
       const newRefreshPayload = {
         email: user.email,
-        sub: user._id.toString(),
-        type: 'refresh'
+        sub: user.id || user._id,
+        type: 'refresh',
       };
       const new_refresh_token = this.jwtService.sign(newRefreshPayload, { expiresIn: '7d' });
 
-      // Revoke old refresh token and store new one in database
-      await this.refreshTokenModel.updateOne(
-        { _id: tokenDoc._id },
-        { revoked: true }
-      );
-
-      const newExpiresAt = new Date(Date.now() + (7 * 24 * 60 * 60 * 1000));
-      await this.refreshTokenModel.create({
-        token: new_refresh_token,
-        userId: newRefreshPayload.sub,
-        email: newRefreshPayload.email,
-        expiresAt: newExpiresAt,
-        userAgent: extractDeviceInfo(userAgent || ''),
+      await this.prisma.refreshToken.update({
+        where: { id: tokenDoc.id },
+        data: { revoked: true },
       });
 
-      // Log token refresh activity
+      const newExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      await this.prisma.refreshToken.create({
+        data: {
+          token: new_refresh_token,
+          userId: newRefreshPayload.sub,
+          email: newRefreshPayload.email,
+          expiresAt: newExpiresAt,
+          userAgent: extractDeviceInfo(userAgent || ''),
+        },
+      });
+
       try {
         await this.systemActivityLogService.createLog({
           action: 'TOKEN_REFRESH',
@@ -365,9 +317,7 @@ export class AuthService {
           role: user.role,
           device: extractDeviceInfo(userAgent || ''),
         });
-      } catch (logError) {
-        // Don't fail refresh if logging fails
-      }
+      } catch {}
 
       return {
         access_token,
@@ -383,39 +333,31 @@ export class AuthService {
         },
       };
     } catch (error) {
-      if (error instanceof UnauthorizedException) {
-        throw error;
-      }
+      if (error instanceof UnauthorizedException) throw error;
       throw new UnauthorizedException('Token refresh failed');
     }
   }
 
-  // Get refresh token stats (for monitoring/debugging)
   async getRefreshTokenStats(): Promise<{ total: number; expired: number; active: number }> {
     const now = new Date();
-    const total = await this.refreshTokenModel.countDocuments({ revoked: false });
-    const expired = await this.refreshTokenModel.countDocuments({
-      revoked: false,
-      expiresAt: { $lt: now }
+    const total = await this.prisma.refreshToken.count({ where: { revoked: false } });
+    const expired = await this.prisma.refreshToken.count({
+      where: { revoked: false, expiresAt: { lt: now } },
     });
-    const active = total - expired;
-
-    return { total, expired, active };
+    return { total, expired, active: total - expired };
   }
 
-  // Revoke refresh token (for logout)
   async revokeRefreshToken(refreshToken: string): Promise<void> {
-    await this.refreshTokenModel.updateOne(
-      { token: refreshToken },
-      { revoked: true }
-    );
+    await this.prisma.refreshToken.updateMany({
+      where: { token: refreshToken },
+      data: { revoked: true },
+    });
   }
 
-  // Clean up expired tokens (can be called by a cron job)
   async cleanupExpiredTokens(): Promise<number> {
-    const result = await this.refreshTokenModel.deleteMany({
-      expiresAt: { $lt: new Date() }
+    const result = await this.prisma.refreshToken.deleteMany({
+      where: { expiresAt: { lt: new Date() } },
     });
-    return result.deletedCount;
+    return result.count;
   }
 }

@@ -4,472 +4,379 @@ import {
   ConflictException,
   BadRequestException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-import { Client, ClientDocument } from '../schemas/client.schema';
+import { PrismaService } from '../../../prisma/prisma.service';
 import {
   CreateClientDto,
   UpdateClientDto,
   AddTransactionDto,
   QueryClientsDto,
 } from '../dto/client.dto';
-import { UserDocument } from '../../users/schemas/user.schema';
 import { UserRole } from '../../../common/enums';
 import { SystemActivityLogService } from '../../system-activity-logs/services/system-activity-log.service';
 import { RealtimeEventService } from '../../websocket/realtime-event.service';
-import { Transaction } from '../../transactions/schemas/transaction.schema';
 
 @Injectable()
 export class ClientsService {
   constructor(
-    @InjectModel(Client.name)
-    private readonly clientModel: Model<ClientDocument>,
-    @InjectModel(Transaction.name)
-    private readonly transactionModel: Model<Transaction>,
+    private readonly prisma: PrismaService,
     private readonly systemActivityLogService: SystemActivityLogService,
     private readonly realtimeEventService: RealtimeEventService,
   ) {}
 
+  private toDoc(client: any) {
+    if (!client) return client;
+    return { ...client, _id: client.id };
+  }
+
   async create(
     createClientDto: CreateClientDto,
-    currentUser?: UserDocument,
+    currentUser?: any,
     device?: string,
-  ): Promise<Client> {
-    const existingClient = await this.clientModel.findOne({
-      phone: createClientDto.phone,
+  ): Promise<any> {
+    const existing = await this.prisma.client.findUnique({
+      where: { phone: createClientDto.phone },
     });
-    if (existingClient) {
-      throw new ConflictException('Phone number already registered');
-    }
-    const client = new this.clientModel({
-      ...createClientDto,
-      isRegistered: true,
-      transactions: [],
+    if (existing) throw new ConflictException('Phone number already registered');
+
+    const client = await this.prisma.client.create({
+      data: {
+        name: createClientDto.name,
+        phone: createClientDto.phone,
+        email: createClientDto.email,
+        description: createClientDto.description,
+        address: createClientDto.address,
+        balance: createClientDto.balance ?? 0,
+        isRegistered: true,
+      },
     });
-    const savedClient = await client.save();
 
-    // Log client creation activity (non-blocking)
-    this.systemActivityLogService
-      .createLog({
-        action: 'CLIENT_CREATED',
-        details: `New client registered: ${savedClient.name} (${savedClient.phone})`,
-        performedBy: currentUser?.email || currentUser?.name || 'System',
-        role: currentUser?.role || 'SYSTEM',
-        device: device || 'System',
-        branchId: currentUser?.branchId?.toString(),
-      })
-      .catch((logError) => {
-        console.error('Failed to log client creation:', logError);
-      });
+    this.systemActivityLogService.createLog({
+      action: 'CLIENT_CREATED',
+      details: `New client registered: ${client.name} (${client.phone})`,
+      performedBy: currentUser?.email || currentUser?.name || 'System',
+      role: currentUser?.role || 'SYSTEM',
+      device: device || 'System',
+      branchId: currentUser?.branchId?.toString(),
+    }).catch(() => {});
 
-    // Emit real-time event for client creation
     try {
       if (currentUser) {
         const eventData = this.realtimeEventService.createEventData(
-          'created',
-          'client',
-          savedClient._id.toString(),
-          savedClient,
-          {
-            id: currentUser._id?.toString() || '',
-            email: currentUser.email,
-            role: currentUser.role,
-            branchId: currentUser.branchId?.toString(),
-            branch: currentUser.branch,
-          }
+          'created', 'client', client.id, client,
+          { id: currentUser._id?.toString() || '', email: currentUser.email, role: currentUser.role, branchId: currentUser.branchId?.toString(), branch: currentUser.branch },
         );
         this.realtimeEventService.emitClientCreated(eventData);
       }
-    } catch (realtimeError) {
-      // Don't fail if real-time event fails
-    }
+    } catch {}
 
-    return savedClient;
+    return this.toDoc(client);
   }
 
-  async findAll(
-    query: QueryClientsDto,
-    currentUser?: UserDocument,
-  ): Promise<Client[]> {
-    const filter: any = {}; // Include all clients (active + blocked)
+  async findAll(query: QueryClientsDto, currentUser?: any): Promise<any[]> {
+    const where: any = {};
+
     if (query.search) {
-      filter.$or = [
-        { name: new RegExp(query.search, 'i') },
-        { phone: new RegExp(query.search, 'i') },
+      where.OR = [
+        { name: { contains: query.search, mode: 'insensitive' } },
+        { phone: { contains: query.search, mode: 'insensitive' } },
       ];
     }
-    if (query.minBalance !== undefined) {
-      filter.balance = { $gte: query.minBalance };
-    }
+    if (query.minBalance !== undefined) where.balance = { gte: query.minBalance };
     if (query.maxBalance !== undefined) {
-      filter.balance = { ...filter.balance, $lte: query.maxBalance };
+      where.balance = { ...where.balance, lte: query.maxBalance };
     }
     if (query.startDate || query.endDate) {
-      filter.lastTransactionDate = {};
-      if (query.startDate) {
-        filter.lastTransactionDate.$gte = query.startDate;
-      }
-      if (query.endDate) {
-        filter.lastTransactionDate.$lte = query.endDate;
-      }
+      where.lastTransactionDate = {};
+      if (query.startDate) where.lastTransactionDate.gte = query.startDate;
+      if (query.endDate) where.lastTransactionDate.lte = query.endDate;
     }
-    
-    return this.clientModel
-      .find(filter)
-      .sort({ lastTransactionDate: -1 })
-      .exec();
+
+    const clients = await this.prisma.client.findMany({
+      where,
+      orderBy: { lastTransactionDate: 'desc' },
+    });
+
+    return clients.map(c => this.toDoc(c));
   }
 
-  async findAllActive(
-    query: QueryClientsDto,
-    currentUser?: UserDocument,
-  ): Promise<Client[]> {
-    const filter: any = { isActive: true }; // Only active clients
+  async findAllActive(query: QueryClientsDto, currentUser?: any): Promise<any[]> {
+    const where: any = { isActive: true };
+
     if (query.search) {
-      filter.$or = [
-        { name: new RegExp(query.search, 'i') },
-        { phone: new RegExp(query.search, 'i') },
+      where.OR = [
+        { name: { contains: query.search, mode: 'insensitive' } },
+        { phone: { contains: query.search, mode: 'insensitive' } },
       ];
     }
-    if (query.minBalance !== undefined) {
-      filter.balance = { $gte: query.minBalance };
-    }
+    if (query.minBalance !== undefined) where.balance = { gte: query.minBalance };
     if (query.maxBalance !== undefined) {
-      filter.balance = { ...filter.balance, $lte: query.maxBalance };
+      where.balance = { ...where.balance, lte: query.maxBalance };
     }
     if (query.startDate || query.endDate) {
-      filter.lastTransactionDate = {};
-      if (query.startDate) {
-        filter.lastTransactionDate.$gte = query.startDate;
-      }
-      if (query.endDate) {
-        filter.lastTransactionDate.$lte = query.endDate;
-      }
+      where.lastTransactionDate = {};
+      if (query.startDate) where.lastTransactionDate.gte = query.startDate;
+      if (query.endDate) where.lastTransactionDate.lte = query.endDate;
     }
-    return this.clientModel
-      .find(filter)
-      .sort({ lastTransactionDate: -1 })
-      .exec();
+
+    const clients = await this.prisma.client.findMany({
+      where,
+      orderBy: { lastTransactionDate: 'desc' },
+    });
+
+    return clients.map(c => this.toDoc(c));
   }
 
-  async findById(
-    id: string,
-    currentUser?: UserDocument,
-  ): Promise<ClientDocument> {
-    const client = await this.clientModel.findById(id);
-    if (!client) {
-      throw new NotFoundException('Client not found');
-    }
-    return client;
+  async findById(id: string, currentUser?: any): Promise<any> {
+    const client = await this.prisma.client.findUnique({ where: { id } });
+    if (!client) throw new NotFoundException('Client not found');
+    return this.toDoc(client);
   }
 
   async update(
     id: string,
     updateClientDto: UpdateClientDto,
-    currentUser?: UserDocument,
+    currentUser?: any,
     device?: string,
-  ): Promise<ClientDocument> {
-    const client = await this.findById(id, currentUser);
+  ): Promise<any> {
+    await this.findById(id, currentUser);
+
     if (updateClientDto.phone) {
-      const existingClient = await this.clientModel.findOne({
-        phone: updateClientDto.phone,
-        _id: { $ne: id },
+      const existing = await this.prisma.client.findFirst({
+        where: { phone: updateClientDto.phone, NOT: { id } },
       });
-      if (existingClient) {
-        throw new ConflictException('Phone number already registered');
-      }
+      if (existing) throw new ConflictException('Phone number already registered');
     }
-    Object.assign(client, updateClientDto);
-    const savedClient = await client.save();
 
-    // Log client update activity (non-blocking)
+    const client = await this.prisma.client.update({
+      where: { id },
+      data: updateClientDto,
+    });
+
     const changes = Object.keys(updateClientDto).join(', ');
-    this.systemActivityLogService
-      .createLog({
-        action: 'CLIENT_UPDATED',
-        details: `Client updated: ${savedClient.name} - Changes: ${changes}`,
-        performedBy: currentUser?.email || currentUser?.name || 'System',
-        role: currentUser?.role || 'SYSTEM',
-        device: device || 'System',
-        branchId: currentUser?.branchId?.toString(),
-      })
-      .catch((logError) => {
-        console.error('Failed to log client update:', logError);
-      });
+    this.systemActivityLogService.createLog({
+      action: 'CLIENT_UPDATED',
+      details: `Client updated: ${client.name} - Changes: ${changes}`,
+      performedBy: currentUser?.email || currentUser?.name || 'System',
+      role: currentUser?.role || 'SYSTEM',
+      device: device || 'System',
+      branchId: currentUser?.branchId?.toString(),
+    }).catch(() => {});
 
-    // Emit real-time event for client update
     try {
       if (currentUser) {
         const eventData = this.realtimeEventService.createEventData(
-          'updated',
-          'client',
-          savedClient._id.toString(),
-          savedClient,
-          {
-            id: currentUser._id?.toString() || '',
-            email: currentUser.email,
-            role: currentUser.role,
-            branchId: currentUser.branchId?.toString(),
-            branch: currentUser.branch,
-          }
+          'updated', 'client', client.id, client,
+          { id: currentUser._id?.toString() || '', email: currentUser.email, role: currentUser.role, branchId: currentUser.branchId?.toString(), branch: currentUser.branch },
         );
         this.realtimeEventService.emitClientUpdated(eventData);
       }
-    } catch (realtimeError) {
-      // Don't fail if real-time event fails
-    }
+    } catch {}
 
-    return savedClient;
+    return this.toDoc(client);
   }
 
   async addTransaction(
     id: string,
     transactionDto: AddTransactionDto,
-    currentUser?: UserDocument,
+    currentUser?: any,
     device?: string,
-  ): Promise<ClientDocument> {
+  ): Promise<any> {
     const client = await this.findById(id, currentUser);
-    const transaction = {
-      ...transactionDto,
-      date: transactionDto.date || new Date(),
-      reference: transactionDto.reference || `TXN${Date.now()}`,
-    };
-    switch (transaction.type) {
+    const date = transactionDto.date || new Date();
+
+    let newBalance = client.balance;
+    switch (transactionDto.type) {
       case 'DEPOSIT':
-        client.balance += transaction.amount;
+        newBalance += transactionDto.amount;
         break;
       case 'PURCHASE':
-        // PURCHASE can now go negative (debt allowed for registered clients)
-        client.balance -= transaction.amount;
-        break;
       case 'PICKUP':
-        // PICKUP legacy support - treat same as PURCHASE (can go negative)
-        client.balance -= transaction.amount;
+      case 'WHOLESALE':
+        newBalance -= transactionDto.amount;
         break;
       case 'RETURN':
-        // RETURN adds refund amount back to client balance
-        client.balance += transaction.amount;
-        break;
-      case 'WHOLESALE':
-        // WHOLESALE deducts from balance (same as PURCHASE)
-        client.balance -= transaction.amount;
+        newBalance += transactionDto.amount;
         break;
     }
-    client.transactions.push(transaction);
-    client.lastTransactionDate = transaction.date;
-    const savedClient = await client.save();
 
-    // Log client transaction activity (non-blocking)
-    this.systemActivityLogService
-      .createLog({
-        action: 'CLIENT_TRANSACTION_ADDED',
-        details: `${transaction.type} transaction added for ${client.name}: ${transaction.amount} - Balance: ${client.balance}`,
-        performedBy: currentUser?.email || currentUser?.name || 'System',
-        role: currentUser?.role || 'SYSTEM',
-        device: device || 'System',
-        branchId: currentUser?.branchId?.toString(),
-      })
-      .catch((logError) => {
-        console.error('Failed to log client transaction:', logError);
-      });
+    const updated = await this.prisma.client.update({
+      where: { id },
+      data: { balance: newBalance, lastTransactionDate: date },
+    });
 
-    return savedClient;
+    this.systemActivityLogService.createLog({
+      action: 'CLIENT_TRANSACTION_ADDED',
+      details: `${transactionDto.type} transaction added for ${client.name}: ${transactionDto.amount} - Balance: ${newBalance}`,
+      performedBy: currentUser?.email || currentUser?.name || 'System',
+      role: currentUser?.role || 'SYSTEM',
+      device: device || 'System',
+      branchId: currentUser?.branchId?.toString(),
+    }).catch(() => {});
+
+    return this.toDoc(updated);
   }
 
-  async remove(
-    id: string,
-    currentUser?: UserDocument,
-    device?: string,
-  ): Promise<void> {
-    const client = await this.clientModel.findById(id);
-    if (!client) {
-      throw new NotFoundException('Client not found');
-    }
+  async remove(id: string, currentUser?: any, device?: string): Promise<void> {
+    const client = await this.prisma.client.findUnique({ where: { id } });
+    if (!client) throw new NotFoundException('Client not found');
 
-    // Soft delete - set isActive to false
-    client.isActive = false;
-    await client.save();
+    await this.prisma.client.update({ where: { id }, data: { isActive: false } });
 
-    // Log client deletion activity (non-blocking)
-    this.systemActivityLogService
-      .createLog({
-        action: 'CLIENT_DELETED',
-        details: `Client deleted: ${client.name} (${client.phone})`,
-        performedBy: currentUser?.email || currentUser?.name || 'System',
-        role: currentUser?.role || 'SYSTEM',
-        device: device || 'System',
-        branchId: currentUser?.branchId?.toString(),
-      })
-      .catch((logError) => {
-        console.error('Failed to log client deletion:', logError);
-      });
+    this.systemActivityLogService.createLog({
+      action: 'CLIENT_DELETED',
+      details: `Client deleted: ${client.name} (${client.phone})`,
+      performedBy: currentUser?.email || currentUser?.name || 'System',
+      role: currentUser?.role || 'SYSTEM',
+      device: device || 'System',
+      branchId: currentUser?.branchId?.toString(),
+    }).catch(() => {});
 
-    // Emit real-time event for client deletion
     try {
       if (currentUser) {
         const eventData = this.realtimeEventService.createEventData(
-          'deleted',
-          'client',
-          client._id.toString(),
-          client,
-          {
-            id: currentUser._id?.toString() || '',
-            email: currentUser.email,
-            role: currentUser.role,
-            branchId: currentUser.branchId?.toString(),
-            branch: currentUser.branch,
-          }
+          'deleted', 'client', id, client,
+          { id: currentUser._id?.toString() || '', email: currentUser.email, role: currentUser.role, branchId: currentUser.branchId?.toString(), branch: currentUser.branch },
         );
         this.realtimeEventService.emitClientDeleted(eventData);
       }
-    } catch (realtimeError) {
-      // Don't fail if real-time event fails
-    }
+    } catch {}
   }
 
   async getTransactionHistory(
     id: string,
     startDate?: Date,
     endDate?: Date,
-    currentUser?: UserDocument,
+    currentUser?: any,
   ): Promise<any> {
     const client = await this.findById(id, currentUser);
-    let transactions = client.transactions;
+
+    const where: any = { clientId: id };
     if (startDate || endDate) {
-      transactions = transactions.filter((t) => {
-        const transDate = new Date(t.date);
-        if (startDate && transDate < startDate) return false;
-        if (endDate && transDate > endDate) return false;
-        return true;
-      });
+      where.date = {};
+      if (startDate) where.date.gte = startDate;
+      if (endDate) where.date.lte = endDate;
     }
-    const summary = {
-      totalDeposits: 0,
-      totalPurchases: 0,
+
+    const transactions = await this.prisma.transaction.findMany({
+      where,
+      include: {
+        items: true,
+        extraCharges: true,
+        userRef: { select: { id: true, name: true, role: true } },
+      },
+      orderBy: { date: 'desc' },
+    });
+
+    let totalDeposits = 0;
+    let totalPurchases = 0;
+
+    transactions.forEach(t => {
+      if (t.type === 'DEPOSIT') totalDeposits += t.total;
+      if (t.type === 'PURCHASE') totalPurchases += t.total;
+    });
+
+    return {
+      totalDeposits,
+      totalPurchases,
       currentBalance: client.balance,
-      transactions: transactions,
+      transactions: transactions.map(t => this.transformTransaction(t)),
     };
-    transactions.forEach((t) => {
-      switch (t.type) {
-        case 'DEPOSIT':
-          summary.totalDeposits += t.amount;
-          break;
-        case 'PURCHASE':
-          summary.totalPurchases += t.amount;
-          break;
-      }
-    });
-    return summary;
   }
 
-  async findDebtors(
-    minAmount: number = 0,
-    currentUser?: UserDocument,
-  ): Promise<Client[]> {
-    const allClients = await this.clientModel.find().exec();
-    
-    const validDebtors = allClients.filter(client => {
-      const balance = Number(client.balance);
-      return !isNaN(balance) && balance < 0 && Math.abs(balance) >= minAmount;
-    });
-    
-    return validDebtors.sort((a, b) => Number(a.balance) - Number(b.balance));
+  private transformTransaction(t: any) {
+    const { userRef, clientRef, branchRef, ...rest } = t;
+    return {
+      ...rest,
+      _id: t.id,
+      userId: userRef ? { _id: userRef.id, ...userRef } : t.userId,
+      clientId: clientRef ? { _id: clientRef.id, ...clientRef } : t.clientId,
+      walkInClient: t.walkInClientName
+        ? { name: t.walkInClientName, phone: t.walkInClientPhone, address: t.walkInClientAddress }
+        : undefined,
+    };
   }
 
-  async createWalkInClient(currentUser?: UserDocument): Promise<Client> {
-    const walkInClient = new this.clientModel({
-      name: 'Walk-in Customer',
-      phone: `WALK-IN-${Date.now()}`,
-      isRegistered: false,
-      balance: 0,
+  async findDebtors(minAmount = 0, currentUser?: any): Promise<any[]> {
+    const clients = await this.prisma.client.findMany();
+    return clients
+      .filter(c => {
+        const balance = Number(c.balance);
+        return !isNaN(balance) && balance < 0 && Math.abs(balance) >= minAmount;
+      })
+      .sort((a, b) => Number(a.balance) - Number(b.balance))
+      .map(c => this.toDoc(c));
+  }
+
+  async createWalkInClient(currentUser?: any): Promise<any> {
+    const client = await this.prisma.client.create({
+      data: {
+        name: 'Walk-in Customer',
+        phone: `WALK-IN-${Date.now()}`,
+        isRegistered: false,
+        balance: 0,
+      },
     });
-    return walkInClient.save();
+    return this.toDoc(client);
   }
 
   async getLifetimeValue(
     id: string,
-    currentUser?: UserDocument,
+    currentUser?: any,
   ): Promise<{ lifetimeValue: number; totalSpent: number; currentBalance: number }> {
     const client = await this.findById(id, currentUser);
-    
-    let totalSpent = 0;
-    client.transactions.forEach((transaction) => {
-      if (transaction.type === 'PURCHASE') {
-        totalSpent += transaction.amount;
-      }
+
+    const transactions = await this.prisma.transaction.findMany({
+      where: { clientId: id, type: 'PURCHASE' },
     });
 
+    const totalSpent = transactions.reduce((sum, t) => sum + t.total, 0);
     const currentBalance = client.balance;
-    const lifetimeValue = currentBalance >= 0 ? 
-      totalSpent + currentBalance : 
-      totalSpent - currentBalance;
+    const lifetimeValue = currentBalance >= 0
+      ? totalSpent + currentBalance
+      : totalSpent - currentBalance;
 
-    return {
-      lifetimeValue,
-      totalSpent,
-      currentBalance,
-    };
+    return { lifetimeValue, totalSpent, currentBalance };
   }
 
-  async blockClient(
-    id: string,
-    currentUser?: UserDocument,
-    device?: string,
-  ): Promise<ClientDocument> {
+  async blockClient(id: string, currentUser?: any, device?: string): Promise<any> {
     const client = await this.findById(id, currentUser);
-    
-    if (!client.isActive) {
-      throw new BadRequestException('Client is already blocked');
-    }
+    if (!client.isActive) throw new BadRequestException('Client is already blocked');
 
-    client.isActive = false;
-    const savedClient = await client.save();
+    const updated = await this.prisma.client.update({
+      where: { id },
+      data: { isActive: false },
+    });
 
-    // Log client block activity (non-blocking)
-    this.systemActivityLogService
-      .createLog({
-        action: 'CLIENT_BLOCKED',
-        details: `Client blocked: ${savedClient.name} (${savedClient.phone})`,
-        performedBy: currentUser?.email || currentUser?.name || 'System',
-        role: currentUser?.role || 'SYSTEM',
-        device: device || 'System',
-        branchId: currentUser?.branchId?.toString(),
-      })
-      .catch((logError) => {
-        console.error('Failed to log client block:', logError);
-      });
+    this.systemActivityLogService.createLog({
+      action: 'CLIENT_BLOCKED',
+      details: `Client blocked: ${updated.name} (${updated.phone})`,
+      performedBy: currentUser?.email || currentUser?.name || 'System',
+      role: currentUser?.role || 'SYSTEM',
+      device: device || 'System',
+      branchId: currentUser?.branchId?.toString(),
+    }).catch(() => {});
 
-    return savedClient;
+    return this.toDoc(updated);
   }
 
-  async unblockClient(
-    id: string,
-    currentUser?: UserDocument,
-    device?: string,
-  ): Promise<ClientDocument> {
+  async unblockClient(id: string, currentUser?: any, device?: string): Promise<any> {
     const client = await this.findById(id, currentUser);
-    
-    if (client.isActive) {
-      throw new BadRequestException('Client is already active');
-    }
+    if (client.isActive) throw new BadRequestException('Client is already active');
 
-    client.isActive = true;
-    const savedClient = await client.save();
+    const updated = await this.prisma.client.update({
+      where: { id },
+      data: { isActive: true },
+    });
 
-    // Log client unblock activity (non-blocking)
-    this.systemActivityLogService
-      .createLog({
-        action: 'CLIENT_UNBLOCKED',
-        details: `Client unblocked: ${savedClient.name} (${savedClient.phone})`,
-        performedBy: currentUser?.email || currentUser?.name || 'System',
-        role: currentUser?.role || 'SYSTEM',
-        device: device || 'System',
-        branchId: currentUser?.branchId?.toString(),
-      })
-      .catch((logError) => {
-        console.error('Failed to log client unblock:', logError);
-      });
+    this.systemActivityLogService.createLog({
+      action: 'CLIENT_UNBLOCKED',
+      details: `Client unblocked: ${updated.name} (${updated.phone})`,
+      performedBy: currentUser?.email || currentUser?.name || 'System',
+      role: currentUser?.role || 'SYSTEM',
+      device: device || 'System',
+      branchId: currentUser?.branchId?.toString(),
+    }).catch(() => {});
 
-    return savedClient;
+    return this.toDoc(updated);
   }
 }

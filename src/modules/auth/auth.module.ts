@@ -7,15 +7,9 @@ import { LocalStrategy } from './strategies/local.strategy';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { AuthController } from './controllers/auth.controller';
 import { AuthService } from './services/auth.service';
-import { MongooseModule } from '@nestjs/mongoose';
-import { Otp, OtpSchema } from './schemas/otp.schema';
-import { RefreshToken, RefreshTokenSchema } from './schemas/refresh-token.schema';
-import { BlacklistedToken, BlacklistedTokenSchema } from './schemas/blacklisted-token.schema';
 import { SystemActivityLogModule } from '../system-activity-logs/system-activity-log.module';
 import { MaintenanceModeModule } from '../maintenance-mode/maintenance-mode.module';
 import { SessionManagementService } from '../session-management/services/session-management.service';
-// MongooseModule alias removed - using main MongooseModule import
-import { SessionManagement, SessionManagementSchema } from '../session-management/schemas/session-management.schema';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @Module({
@@ -35,12 +29,6 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
       }),
       inject: [ConfigService],
     }),
-    MongooseModule.forFeature([
-      { name: Otp.name, schema: OtpSchema },
-      { name: RefreshToken.name, schema: RefreshTokenSchema },
-      { name: BlacklistedToken.name, schema: BlacklistedTokenSchema },
-      { name: SessionManagement.name, schema: SessionManagementSchema }
-    ]),
   ],
   controllers: [AuthController],
   providers: [AuthService, LocalStrategy, JwtStrategy, JwtAuthGuard, SessionManagementService],

@@ -12,7 +12,6 @@ import {
 } from '@nestjs/common';
 import { BranchesService } from '../services/branches.service';
 import { CreateBranchDto, UpdateBranchDto } from '../dto/branch.dto';
-import { Branch } from '../schemas/branch.schema';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { UserRole } from '../../../common/enums';
@@ -25,7 +24,7 @@ export class BranchesController {
 
  @Post()
 @Roles(UserRole.MAINTAINER)
-async create(@Body() createBranchDto: CreateBranchDto, @Req() req): Promise<Branch> {
+async create(@Body() createBranchDto: CreateBranchDto, @Req() req): Promise<any> {
   const currentUser = req.user; // comes from JwtAuthGuard
   const userAgent = req.headers['user-agent']; // get device info 
 
@@ -34,7 +33,7 @@ async create(@Body() createBranchDto: CreateBranchDto, @Req() req): Promise<Bran
 
   @Get()
   @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER)
-  async findAll(@Request() req): Promise<Branch[]> {
+  async findAll(@Request() req): Promise<any[]> {
     return this.branchesService.findAll(req.user);
   }
 
@@ -45,7 +44,7 @@ async create(@Body() createBranchDto: CreateBranchDto, @Req() req): Promise<Bran
     UserRole.ADMIN,
     UserRole.STAFF,
   )
-  async findOne(@Param('id') id: string, @Request() req): Promise<Branch> {
+  async findOne(@Param('id') id: string, @Request() req): Promise<any> {
     return this.branchesService.findById(id, req.user);
   }
 
@@ -55,7 +54,7 @@ async create(@Body() createBranchDto: CreateBranchDto, @Req() req): Promise<Bran
     @Param('id') id: string,
     @Body() updateBranchDto: UpdateBranchDto,
     @Request() req,
-  ): Promise<Branch> {
+  ): Promise<any> {
     return this.branchesService.update(id, updateBranchDto, req.user);
   }
 

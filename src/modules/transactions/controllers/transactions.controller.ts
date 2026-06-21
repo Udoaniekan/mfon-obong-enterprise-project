@@ -18,7 +18,6 @@ import {
   QueryTransactionsDto,
   CalculateTransactionDto,
 } from '../dto/transaction.dto';
-import { Transaction } from '../schemas/transaction.schema';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { UserRole } from '../../../common/enums';
@@ -76,7 +75,7 @@ export class TransactionsController {
   async create(
     @Body() createTransactionDto: CreateTransactionDto,
     @Request() req,
-  ): Promise<Transaction> {
+  ): Promise<any> {
     const currentUser = req.user;
     const userAgent = req.headers['user-agent'];
     
@@ -101,7 +100,7 @@ export class TransactionsController {
     UserRole.MAINTAINER,
     UserRole.STAFF,
   )
-  async findAll(@Query() query: QueryTransactionsDto): Promise<Transaction[]> {
+  async findAll(@Query() query: QueryTransactionsDto): Promise<any[]> {
     return this.transactionsService.findAll(query);
   }
 
@@ -115,7 +114,7 @@ export class TransactionsController {
 async findByBranch(
   @Param('branchId') branchId: string,
   @Request() req,
-): Promise<Transaction[]> {
+): Promise<any[]> {
   const { role, branchId: userBranchId } = req.user;
 
   // Super Admin and Maintainer can access any branch
@@ -145,7 +144,7 @@ async findByBranch(
     UserRole.MAINTAINER,
     UserRole.STAFF,
   )
-  async findByUser(@Param('userId') userId: string, @Request() req): Promise<Transaction[]> {
+  async findByUser(@Param('userId') userId: string, @Request() req): Promise<any[]> {
     // Check permissions: Non-privileged users can only access their own transactions
     if (![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(req.user.role) && req.user.userId !== userId) {
       throw new BadRequestException('Forbidden: You can only access your own transactions');
@@ -160,7 +159,7 @@ async findByBranch(
     UserRole.MAINTAINER,
     UserRole.STAFF,
   )
-  async findByClient(@Param('clientId') clientId: string): Promise<Transaction[]> {
+  async findByClient(@Param('clientId') clientId: string): Promise<any[]> {
     return this.transactionsService.findByClientId(clientId);
   }
 
@@ -175,7 +174,7 @@ async findByBranch(
     UserRole.MAINTAINER,
     UserRole.STAFF,
   )
-  async findOne(@Param('id') id: string): Promise<Transaction> {
+  async findOne(@Param('id') id: string): Promise<any> {
     return this.transactionsService.findById(id);
   }
 
@@ -190,7 +189,7 @@ async findByBranch(
     @Param('id') id: string,
     @Body() updateTransactionDto: UpdateTransactionDto,
     @Request() req,
-  ): Promise<Transaction> {
+  ): Promise<any> {
     const currentUser = req.user;
     const userAgent = req.headers['user-agent'];
     return this.transactionsService.update(id, updateTransactionDto, currentUser, userAgent);

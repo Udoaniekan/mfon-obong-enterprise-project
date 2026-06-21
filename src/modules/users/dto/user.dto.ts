@@ -4,7 +4,6 @@ import {
   IsNotEmpty,
   IsString,
   MinLength,
-  IsMongoId,
   IsOptional,
   Matches,
 } from 'class-validator';
@@ -44,7 +43,7 @@ export class CreateUserDto {
   role: UserRole;
 
   @IsNotEmpty()
-  @IsMongoId()
+  @IsString()
   branchId: string;
 
   @IsNotEmpty()
@@ -113,7 +112,7 @@ export class UpdateUserDto {
   role?: UserRole;
 
   @IsOptional()
-  @IsMongoId()
+  @IsString()
   branchId?: string;
 
   @IsOptional()

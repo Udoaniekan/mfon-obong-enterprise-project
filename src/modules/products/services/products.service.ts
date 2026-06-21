@@ -3,9 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-import { Product, ProductDocument } from '../schemas/product.schema';
+import { PrismaService } from '../../../prisma/prisma.service';
 import {
   CreateProductDto,
   UpdateProductDto,
@@ -13,7 +11,6 @@ import {
   StockOperation,
 } from '../dto/product.dto';
 import { CategoriesService } from '../../categories/services/categories.service';
-import { UserDocument } from '../../users/schemas/user.schema';
 import { UserRole } from '../../../common/enums';
 import { SystemActivityLogService } from '../../system-activity-logs/services/system-activity-log.service';
 import { RealtimeEventService } from '../../websocket/realtime-event.service';
@@ -21,465 +18,373 @@ import { RealtimeEventService } from '../../websocket/realtime-event.service';
 @Injectable()
 export class ProductsService {
   constructor(
-    @InjectModel(Product.name) private productModel: Model<ProductDocument>,
+    private readonly prisma: PrismaService,
     private readonly categoriesService: CategoriesService,
     private readonly systemActivityLogService: SystemActivityLogService,
     private readonly realtimeEventService: RealtimeEventService,
   ) {}
 
+  private transformProduct(product: any) {
+    if (!product) return product;
+    const { categoryRef, branchRef, ...rest } = product;
+    return {
+      ...rest,
+      _id: product.id,
+      categoryId: categoryRef
+        ? { _id: categoryRef.id, ...categoryRef }
+        : product.categoryId,
+      branchId: branchRef
+        ? { _id: branchRef.id, ...branchRef }
+        : product.branchId,
+    };
+  }
+
+  private readonly productInclude = {
+    categoryRef: { select: { id: true, name: true, units: true } },
+    branchRef: { select: { id: true, name: true } },
+  };
+
   async create(
     createProductDto: CreateProductDto,
-    currentUser?: UserDocument,
+    currentUser?: any,
     device?: string,
-  ): Promise<Product> {
-    // branchId is now compulsory from DTO - use the provided branchId
+  ): Promise<any> {
     const branchId = createProductDto.branchId;
 
-    // Validate that the unit matches the category
-    let category;
+    let category: any;
     try {
-      category = await this.categoriesService.findById(
-        createProductDto.categoryId,
-      );
-    } catch (error) {
+      category = await this.categoriesService.findById(createProductDto.categoryId);
+    } catch {
       throw new BadRequestException(
         `Invalid categoryId: ${createProductDto.categoryId}. Category does not exist.`,
       );
     }
-    
+
     if (!category.units.includes(createProductDto.unit)) {
       throw new BadRequestException(
         `Invalid unit ${createProductDto.unit} for category ${category.name}`,
       );
     }
 
-    // Check if a product with the same categoryId, unit, and branchId already exists
-    const existingProduct = await this.productModel.findOne({
-      categoryId: createProductDto.categoryId,
-      unit: createProductDto.unit,
-      branchId: new Types.ObjectId(branchId),
+    const existingProduct = await this.prisma.product.findFirst({
+      where: {
+        name: createProductDto.name,
+        branchId,
+      },
     });
 
     if (existingProduct) {
       throw new BadRequestException(
-        `A product with unit ${createProductDto.unit} already exists for category ${category.name} in this branch. Please choose a different unit.`,
+        `A product named "${createProductDto.name}" already exists in this branch.`,
       );
     }
 
-    const product = new this.productModel({
-      ...createProductDto,
-      branchId: new Types.ObjectId(branchId),
-      priceHistory: [{ price: createProductDto.unitPrice, date: new Date() }],
+    const product = await this.prisma.product.create({
+      data: {
+        name: createProductDto.name,
+        categoryId: createProductDto.categoryId,
+        unit: createProductDto.unit,
+        unitPrice: createProductDto.unitPrice,
+        stock: createProductDto.stock ?? 0,
+        minStockLevel: createProductDto.minStockLevel ?? 0,
+        branchId,
+        priceHistory: [{ price: createProductDto.unitPrice, date: new Date() }],
+      },
+      include: this.productInclude,
     });
 
-    const savedProduct = await product.save();
+    try {
+      this.systemActivityLogService.createLog({
+        action: 'PRODUCT_CREATED',
+        details: `Product created: ${product.name} (${product.unit}) in category ${category.name} - Price: ${product.unitPrice}`,
+        performedBy: currentUser?.email || currentUser?.name || 'System',
+        role: currentUser?.role || 'SYSTEM',
+        device: device || 'System',
+        branchId: currentUser?.branchId?.toString(),
+      }).catch(() => {});
+    } catch {}
 
-    // Log product creation activity (non-blocking)
-    this.categoriesService
-      .findById(createProductDto.categoryId)
-      .then((category) => {
-        return this.systemActivityLogService.createLog({
-          action: 'PRODUCT_CREATED',
-          details: `Product created: ${savedProduct.name} (${savedProduct.unit}) in category ${category.name} - Price: ${savedProduct.unitPrice}`,
-          performedBy: currentUser?.email || currentUser?.name || 'System',
-          role: currentUser?.role || 'SYSTEM',
-          device: device || 'System',
-          branchId: currentUser?.branchId?.toString(),
-        });
-      })
-      .catch((logError) => {
-        console.error('Failed to log product creation:', logError);
-      });
-
-    // Emit real-time event for product creation
     try {
       if (currentUser) {
         const eventData = this.realtimeEventService.createEventData(
-          'created',
-          'product',
-          savedProduct._id.toString(),
-          savedProduct,
-          {
-            id: currentUser._id?.toString() || '',
-            email: currentUser.email,
-            role: currentUser.role,
-            branchId: currentUser.branchId?.toString(),
-            branch: currentUser.branch,
-          }
+          'created', 'product', product.id, product,
+          { id: currentUser.id || currentUser._id || '', email: currentUser.email, role: currentUser.role, branchId: currentUser.branchId?.toString(), branch: currentUser.branch },
         );
         this.realtimeEventService.emitProductCreated(eventData);
       }
-    } catch (realtimeError) {
-      // Don't fail if real-time event fails
-    }
+    } catch {}
 
-    // Return the product with populated branchId information
-    return this.productModel
-      .findById(savedProduct._id)
-      .populate('categoryId', 'name units')
-      .populate('branchId', 'name')
-      .exec();
+    return this.transformProduct(product);
   }
 
-  async findAll(
-    currentUser?: UserDocument,
-    includeInactive = false,
-  ): Promise<ProductDocument[]> {
-    const filter: any = includeInactive ? {} : { isActive: true };
+  async findAll(currentUser?: any, includeInactive = false): Promise<any[]> {
+    const where: any = includeInactive ? {} : { isActive: true };
 
-    // Only SUPER_ADMIN and MAINTAINER can see all products
     if (
       currentUser &&
       ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
     ) {
-      filter.branchId = new Types.ObjectId(currentUser.branchId);
+      where.branchId = currentUser.branchId;
     }
 
-    return this.productModel
-      .find(filter)
-      .populate('categoryId', 'name units')
-      .populate('branchId', 'name')
-      .exec();
+    const products = await this.prisma.product.findMany({
+      where,
+      include: this.productInclude,
+    });
+
+    return products.map(p => this.transformProduct(p));
   }
 
-  async findById(
-    id: string,
-    currentUser?: UserDocument,
-  ): Promise<ProductDocument> {
-    const filter: any = { _id: id };
+  async findById(id: string, currentUser?: any): Promise<any> {
+    const where: any = { id };
 
-    // Only SUPER_ADMIN and MAINTAINER can access products from other branches
     if (
       currentUser &&
       ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
     ) {
-      filter.branchId = new Types.ObjectId(currentUser.branchId);
+      where.branchId = currentUser.branchId;
     }
 
-    const product = await this.productModel
-      .findOne(filter)
-      .populate('categoryId', 'name units')
-      .populate('branchId', 'name')
-      .exec();
+    const product = await this.prisma.product.findFirst({
+      where,
+      include: this.productInclude,
+    });
 
-    if (!product) {
-      throw new NotFoundException('Product not found');
-    }
-    return product;
+    if (!product) throw new NotFoundException('Product not found');
+    return this.transformProduct(product);
   }
 
   async update(
     id: string,
     updateProductDto: UpdateProductDto,
-    currentUser?: UserDocument,
+    currentUser?: any,
     device?: string,
-  ): Promise<ProductDocument> {
-    const product = await this.findById(id, currentUser);
+  ): Promise<any> {
+    const existing = await this.findById(id, currentUser);
 
-    // Validate that the unit matches the category if changing unit or category
     if (updateProductDto.unit || updateProductDto.categoryId) {
-      const categoryId =
-        updateProductDto.categoryId || product.categoryId.toString();
-      const category = await this.categoriesService.findById(categoryId);
-      const unit = updateProductDto.unit || product.unit;
+      const categoryId = updateProductDto.categoryId || existing.categoryId?.id || existing.categoryId;
+      const category = await this.categoriesService.findById(typeof categoryId === 'string' ? categoryId : categoryId?.id || categoryId);
+      const unit = updateProductDto.unit || existing.unit;
 
       if (!category.units.includes(unit)) {
-        throw new BadRequestException(
-          `Invalid unit ${unit} for category ${category.name}`,
-        );
+        throw new BadRequestException(`Invalid unit ${unit} for category ${category.name}`);
       }
     }
 
-    // Track price history if price is changing
+    const updateData: any = { ...updateProductDto };
+
     if (
       updateProductDto.unitPrice &&
-      updateProductDto.unitPrice !== product.unitPrice
+      updateProductDto.unitPrice !== existing.unitPrice
     ) {
-      product.priceHistory.push({
-        price: updateProductDto.unitPrice,
-        date: new Date(),
-      });
+      const currentHistory = Array.isArray(existing.priceHistory) ? existing.priceHistory : [];
+      updateData.priceHistory = [
+        ...currentHistory,
+        { price: updateProductDto.unitPrice, date: new Date() },
+      ];
     }
 
-    // Handle branchId update for SUPER_ADMIN and MAINTAINER only
     if (updateProductDto.branchId) {
       if (
         currentUser &&
         ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
       ) {
-        delete updateProductDto.branchId; // Remove branchId if user doesn't have permission
-      } else {
-        updateProductDto.branchId = new Types.ObjectId(
-          updateProductDto.branchId,
-        ) as any;
+        delete updateData.branchId;
       }
     }
 
-    Object.assign(product, updateProductDto);
-    const savedProduct = await product.save();
+    const product = await this.prisma.product.update({
+      where: { id },
+      data: updateData,
+      include: this.productInclude,
+    });
 
-    // Log product update activity (non-blocking)
-    const changes = Object.keys(updateProductDto).join(', ');
-    this.systemActivityLogService
-      .createLog({
+    try {
+      const changes = Object.keys(updateProductDto).join(', ');
+      this.systemActivityLogService.createLog({
         action: 'PRODUCT_UPDATED',
-        details: `Product updated: ${savedProduct.name} - Changes: ${changes}`,
+        details: `Product updated: ${product.name} - Changes: ${changes}`,
         performedBy: currentUser?.email || currentUser?.name || 'System',
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
         branchId: currentUser?.branchId?.toString(),
-      })
-      .catch((logError) => {
-        console.error('Failed to log product update:', logError);
-      });
+      }).catch(() => {});
+    } catch {}
 
-    // Emit real-time event for product update
     try {
       if (currentUser) {
         const eventData = this.realtimeEventService.createEventData(
-          'updated',
-          'product',
-          savedProduct._id.toString(),
-          savedProduct,
-          {
-            id: currentUser._id?.toString() || '',
-            email: currentUser.email,
-            role: currentUser.role,
-            branchId: currentUser.branchId?.toString(),
-            branch: currentUser.branch,
-          }
+          'updated', 'product', product.id, product,
+          { id: currentUser.id || currentUser._id || '', email: currentUser.email, role: currentUser.role, branchId: currentUser.branchId?.toString(), branch: currentUser.branch },
         );
         this.realtimeEventService.emitProductUpdated(eventData);
       }
-    } catch (realtimeError) {
-      // Don't fail if real-time event fails
-    }
+    } catch {}
 
-    return savedProduct;
+    return this.transformProduct(product);
   }
 
   async updateStock(
     id: string,
     updateStockDto: UpdateStockDto,
-    currentUser?: UserDocument,
+    currentUser?: any,
     device?: string,
-  ): Promise<ProductDocument> {
-    const filter: any = { _id: id };
+  ): Promise<any> {
+    const where: any = { id };
 
-    // Only SUPER_ADMIN and MAINTAINER can update stock from other branches
     if (
       currentUser &&
       ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
     ) {
-      filter.branchId = new Types.ObjectId(currentUser.branchId);
+      where.branchId = currentUser.branchId;
     }
 
-    // Get the product first to validate it exists
-    const product = await this.productModel.findOne(filter).exec();
-    if (!product) {
-      throw new NotFoundException(`Product with ID ${id} not found`);
-    }
+    const product = await this.prisma.product.findFirst({ where });
+    if (!product) throw new NotFoundException(`Product with ID ${id} not found`);
 
     const { quantity, unit, operation } = updateStockDto;
 
-    // Validate the unit matches
     if (product.unit !== unit) {
       throw new BadRequestException(
         `Unit mismatch: product has unit "${product.unit}", but operation specified "${unit}"`,
       );
     }
 
-    // Validate stock level for subtraction
     if (operation === StockOperation.SUBTRACT && product.stock < quantity) {
       throw new BadRequestException(
         `Insufficient stock: current ${product.stock}, requested ${quantity}`,
       );
     }
 
-    // Calculate new stock
     const newStock =
       operation === StockOperation.ADD
         ? product.stock + quantity
         : product.stock - quantity;
 
-    // Use findOneAndUpdate to update in one atomic operation
-    await this.productModel
-      .findOneAndUpdate(filter, { $set: { stock: newStock } })
-      .exec();
+    const updatedProduct = await this.prisma.product.update({
+      where: { id },
+      data: { stock: newStock },
+      include: this.productInclude,
+    });
 
-    // Return the updated product with populated fields
-    const updatedProduct = await this.productModel
-      .findOne(filter)
-      .populate('categoryId', 'name units')
-      .populate('branchId', 'name')
-      .exec();
-
-    // Log stock update activity (non-blocking)
-    this.systemActivityLogService
-      .createLog({
+    try {
+      this.systemActivityLogService.createLog({
         action: 'STOCK_UPDATED',
         details: `Stock ${operation === StockOperation.ADD ? 'increased' : 'decreased'} for ${updatedProduct.name}: ${quantity} ${unit} (New stock: ${newStock})`,
         performedBy: currentUser?.email || currentUser?.name || 'System',
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
         branchId: currentUser?.branchId?.toString(),
-      })
-      .catch((logError) => {
-        console.error('Failed to log stock update:', logError);
-      });
+      }).catch(() => {});
+    } catch {}
 
-    return updatedProduct;
+    return this.transformProduct(updatedProduct);
   }
 
-  async remove(
-    id: string,
-    currentUser?: UserDocument,
-    device?: string,
-  ): Promise<void> {
+  async remove(id: string, currentUser?: any, device?: string): Promise<void> {
     const product = await this.findById(id, currentUser);
-    product.isActive = false;
-    await product.save();
 
-    // Log product deactivation activity (non-blocking)
-    this.systemActivityLogService
-      .createLog({
+    await this.prisma.product.update({ where: { id }, data: { isActive: false } });
+
+    try {
+      this.systemActivityLogService.createLog({
         action: 'PRODUCT_DEACTIVATED',
         details: `Product deactivated: ${product.name} (${product.unit})`,
         performedBy: currentUser?.email || currentUser?.name || 'System',
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
         branchId: currentUser?.branchId?.toString(),
-      })
-      .catch((logError) => {
-        console.error('Failed to log product deactivation:', logError);
-      });
+      }).catch(() => {});
+    } catch {}
 
-    // Emit real-time event for product deletion
     try {
       if (currentUser) {
         const eventData = this.realtimeEventService.createEventData(
-          'deleted',
-          'product',
-          product._id.toString(),
-          product,
-          {
-            id: currentUser._id?.toString() || '',
-            email: currentUser.email,
-            role: currentUser.role,
-            branchId: currentUser.branchId?.toString(),
-            branch: currentUser.branch,
-          }
+          'deleted', 'product', id, product,
+          { id: currentUser.id || currentUser._id || '', email: currentUser.email, role: currentUser.role, branchId: currentUser.branchId?.toString(), branch: currentUser.branch },
         );
         this.realtimeEventService.emitProductDeleted(eventData);
       }
-    } catch (realtimeError) {
-      // Don't fail if real-time event fails
-    }
+    } catch {}
   }
 
-  async hardRemove(
-    id: string,
-    currentUser?: UserDocument,
-    device?: string,
-  ): Promise<void> {
-    const filter: any = { _id: id };
+  async hardRemove(id: string, currentUser?: any, device?: string): Promise<void> {
+    const where: any = { id };
 
-    // Only SUPER_ADMIN and MAINTAINER can delete products from other branches
     if (
       currentUser &&
       ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
     ) {
-      filter.branchId = new Types.ObjectId(currentUser.branchId);
+      where.branchId = currentUser.branchId;
     }
 
-    const result = await this.productModel.findOneAndDelete(filter);
-    if (!result) {
-      throw new NotFoundException('Product not found');
-    }
-
-    // Log product hard deletion activity (non-blocking)
-    this.systemActivityLogService
-      .createLog({
-        action: 'PRODUCT_DELETED',
-        details: `Product permanently deleted: ${result.name} (${result.unit})`,
-        performedBy: currentUser?.email || currentUser?.name || 'System',
-        role: currentUser?.role || 'SYSTEM',
-        device: device || 'System',
-        branchId: currentUser?.branchId?.toString(),
-      })
-      .catch((logError) => {
-        console.error('Failed to log product deletion:', logError);
-      });
-  }
-
-  async getLowStockProducts(
-    currentUser?: UserDocument,
-  ): Promise<ProductDocument[]> {
-    const filter: any = {
-      isActive: true,
-      $expr: {
-        $lte: ['$stock', '$minStockLevel'],
-      },
-    };
-
-    // Only SUPER_ADMIN and MAINTAINER can see all low stock products
-    if (
-      currentUser &&
-      ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
-    ) {
-      filter.branchId = new Types.ObjectId(currentUser.branchId);
-    }
-
-    return this.productModel
-      .find(filter)
-      .populate('categoryId', 'name units')
-      .populate('branchId', 'name')
-      .exec();
-  }
-
-  async findByCategory(
-    categoryId: string,
-    currentUser?: UserDocument,
-  ): Promise<ProductDocument[]> {
-    const filter: any = { categoryId, isActive: true };
-
-    // Only SUPER_ADMIN and MAINTAINER can see products from all branches
-    if (
-      currentUser &&
-      ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
-    ) {
-      filter.branchId = new Types.ObjectId(currentUser.branchId);
-    }
-
-    return this.productModel
-      .find(filter)
-      .populate('categoryId', 'name units')
-      .populate('branchId', 'name')
-      .exec();
-  }
-
-  async findByBranchId(branchId: string): Promise<ProductDocument[]> {
     try {
-      // Validate if branchId is a valid ObjectId
-      if (!Types.ObjectId.isValid(branchId)) {
-        throw new BadRequestException(`Invalid branchId format: ${branchId}`);
-      }
-
-      return this.productModel
-        .find({ branchId: new Types.ObjectId(branchId), isActive: true })
-        .populate('categoryId', 'name units')
-        .populate('branchId', 'name')
-        .sort({ createdAt: -1 })
-        .exec();
+      const product = await this.prisma.product.delete({ where: { id } });
+      try {
+        this.systemActivityLogService.createLog({
+          action: 'PRODUCT_DELETED',
+          details: `Product permanently deleted: ${product.name} (${product.unit})`,
+          performedBy: currentUser?.email || currentUser?.name || 'System',
+          role: currentUser?.role || 'SYSTEM',
+          device: device || 'System',
+          branchId: currentUser?.branchId?.toString(),
+        }).catch(() => {});
+      } catch {}
     } catch (error) {
-      if (error instanceof BadRequestException) {
-        throw error;
-      }
-      throw new BadRequestException(`Error finding products by branchId: ${error.message}`);
+      if (error?.code === 'P2025') throw new NotFoundException('Product not found');
+      throw error;
     }
   }
 
-  calculatePrice(product: Product | ProductDocument, quantity: number): number {
+  async getLowStockProducts(currentUser?: any): Promise<any[]> {
+    const where: any = { isActive: true };
+
+    if (
+      currentUser &&
+      ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
+    ) {
+      where.branchId = currentUser.branchId;
+    }
+
+    const products = await this.prisma.product.findMany({
+      where,
+      include: this.productInclude,
+    });
+
+    return products
+      .filter(p => p.stock <= p.minStockLevel)
+      .map(p => this.transformProduct(p));
+  }
+
+  async findByCategory(categoryId: string, currentUser?: any): Promise<any[]> {
+    const where: any = { categoryId, isActive: true };
+
+    if (
+      currentUser &&
+      ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
+    ) {
+      where.branchId = currentUser.branchId;
+    }
+
+    const products = await this.prisma.product.findMany({
+      where,
+      include: this.productInclude,
+    });
+
+    return products.map(p => this.transformProduct(p));
+  }
+
+  async findByBranchId(branchId: string): Promise<any[]> {
+    const products = await this.prisma.product.findMany({
+      where: { branchId, isActive: true },
+      include: this.productInclude,
+      orderBy: { createdAt: 'desc' },
+    });
+    return products.map(p => this.transformProduct(p));
+  }
+
+  calculatePrice(product: any, quantity: number): number {
     return quantity * product.unitPrice;
   }
 }

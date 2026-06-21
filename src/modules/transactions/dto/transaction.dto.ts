@@ -2,7 +2,6 @@ import {
   IsString,
   IsNumber,
   IsArray,
-  IsMongoId,
   IsOptional,
   IsBoolean,
   IsEnum,
@@ -38,7 +37,7 @@ export class WalkInClientDto {
 }
 
 export class TransactionItemDto {
-  @IsMongoId()
+  @IsString()
   productId: string;
 
   @IsNumber()
@@ -75,7 +74,7 @@ export enum TransactionType {
 
 export class CreateTransactionDto {
   @IsOptional()
-  @IsMongoId()
+  @IsString()
   clientId?: string;
 
   @IsOptional()
@@ -122,7 +121,7 @@ export class CreateTransactionDto {
   @IsString()
   paymentMethod?: string;
 
-  @IsMongoId()
+  @IsString()
   branchId: string;
 
   @IsOptional()
@@ -137,7 +136,7 @@ export class CreateTransactionDto {
 
   // Fields for RETURN transactions
   @IsOptional()
-  @IsMongoId()
+  @IsString()
   referenceTransactionId?: string;
 
   @IsOptional()
@@ -207,13 +206,13 @@ export class UpdateTransactionDto {
   notes?: string;
 
   @IsOptional()
-  @IsMongoId()
+  @IsString()
   branchId?: string;
 }
 
 export class CalculateTransactionDto {
   @IsOptional()
-  @IsMongoId()
+  @IsString()
   clientId?: string;
 
   @IsOptional()
@@ -262,13 +261,13 @@ export class CalculateTransactionDto {
   @Type(() => ExtraChargeDto)
   extraCharges?: ExtraChargeDto[];
 
-  @IsMongoId()
+  @IsString()
   branchId: string;
 }
 
 export class QueryTransactionsDto {
   @IsOptional()
-  @IsMongoId()
+  @IsString()
   clientId?: string;
 
   @IsOptional()
@@ -294,6 +293,6 @@ export class QueryTransactionsDto {
   isPickedUp?: boolean;
 
   @IsOptional()
-  @IsMongoId()
+  @IsString()
   branchId?: string;
 }

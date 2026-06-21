@@ -1,50 +1,43 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-import { SessionManagement, SessionManagementDocument } from '../schemas/session-management.schema';
+import { PrismaService } from '../../../prisma/prisma.service';
 import { SetActiveHoursDto, UpdateActiveHoursDto, SessionStatusResponseDto } from '../dto/session-management.dto';
-import { UserDocument } from '../../users/schemas/user.schema';
 import { UserRole } from '../../../common/enums';
 import { SystemActivityLogService } from '../../system-activity-logs/services/system-activity-log.service';
 
 @Injectable()
 export class SessionManagementService {
   constructor(
-    @InjectModel(SessionManagement.name) 
-    private sessionManagementModel: Model<SessionManagementDocument>,
+    private readonly prisma: PrismaService,
     private readonly systemActivityLogService: SystemActivityLogService,
   ) {}
 
   async setActiveHours(
     setActiveHoursDto: SetActiveHoursDto,
-    currentUser: UserDocument,
+    currentUser: any,
     device?: string,
-  ): Promise<SessionManagementDocument> {
-    // Only MAINTAINER can set active hours
+  ): Promise<any> {
     if (currentUser.role !== UserRole.MAINTAINER) {
       throw new ForbiddenException('Only MAINTAINERs can set active hours');
     }
-
-    // Validate time format and logic
     this.validateTimeRange(setActiveHoursDto.startTime, setActiveHoursDto.endTime);
 
-    // Deactivate any existing active hours settings
-    await this.sessionManagementModel.updateMany(
-      { isActive: true },
-      { isActive: false }
-    );
-
-    // Create new active hours setting
-    const sessionManagement = new this.sessionManagementModel({
-      ...setActiveHoursDto,
-      setBy: new Types.ObjectId(currentUser._id?.toString()),
-      setByEmail: currentUser.email,
-      isActive: true,
+    await this.prisma.sessionManagement.updateMany({
+      where: { isActive: true },
+      data: { isActive: false },
     });
 
-    const savedSetting = await sessionManagement.save();
+    const savedSetting = await this.prisma.sessionManagement.create({
+      data: {
+        startTime: setActiveHoursDto.startTime,
+        endTime: setActiveHoursDto.endTime,
+        timezone: setActiveHoursDto.timezone,
+        setById: currentUser._id?.toString() || currentUser.id,
+        setByEmail: currentUser.email,
+        description: setActiveHoursDto.description,
+        isActive: true,
+      },
+    });
 
-    // Log the activity
     try {
       await this.systemActivityLogService.createLog({
         action: 'SESSION_HOURS_SET',
@@ -53,45 +46,49 @@ export class SessionManagementService {
         role: currentUser.role || 'SYSTEM',
         device: device || 'System',
       });
-    } catch (logError) {
-      // Don't fail if logging fails
-    }
+    } catch {}
 
-    return savedSetting;
+    return { ...savedSetting, _id: savedSetting.id };
   }
 
-  async getActiveHours(): Promise<SessionManagementDocument | null> {
-    return this.sessionManagementModel
-      .findOne({ isActive: true })
-      .sort({ createdAt: -1 })
-      .exec();
+  async getActiveHours(): Promise<any | null> {
+    const setting = await this.prisma.sessionManagement.findFirst({
+      where: { isActive: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!setting) return null;
+    return { ...setting, _id: setting.id, setBy: setting.setById };
   }
 
   async updateActiveHours(
     updateActiveHoursDto: UpdateActiveHoursDto,
-    currentUser: UserDocument,
+    currentUser: any,
     device?: string,
-  ): Promise<SessionManagementDocument> {
-    // Only MAINTAINER can update active hours
+  ): Promise<any> {
     if (currentUser.role !== UserRole.MAINTAINER) {
       throw new ForbiddenException('Only MAINTAINERs can update active hours');
     }
 
-    const existingSetting = await this.getActiveHours();
-    if (!existingSetting) {
-      throw new NotFoundException('No active hours setting found');
-    }
+    const existingSetting = await this.prisma.sessionManagement.findFirst({
+      where: { isActive: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!existingSetting) throw new NotFoundException('No active hours setting found');
 
-    // Validate time range if both times are provided
     if (updateActiveHoursDto.startTime && updateActiveHoursDto.endTime) {
       this.validateTimeRange(updateActiveHoursDto.startTime, updateActiveHoursDto.endTime);
     }
 
-    // Update the setting
-    Object.assign(existingSetting, updateActiveHoursDto);
-    const updatedSetting = await existingSetting.save();
+    const updatedSetting = await this.prisma.sessionManagement.update({
+      where: { id: existingSetting.id },
+      data: {
+        ...(updateActiveHoursDto.startTime && { startTime: updateActiveHoursDto.startTime }),
+        ...(updateActiveHoursDto.endTime && { endTime: updateActiveHoursDto.endTime }),
+        ...(updateActiveHoursDto.timezone && { timezone: updateActiveHoursDto.timezone }),
+        ...(updateActiveHoursDto.description !== undefined && { description: updateActiveHoursDto.description }),
+      },
+    });
 
-    // Log the activity
     try {
       await this.systemActivityLogService.createLog({
         action: 'SESSION_HOURS_UPDATED',
@@ -100,11 +97,9 @@ export class SessionManagementService {
         role: currentUser.role || 'SYSTEM',
         device: device || 'System',
       });
-    } catch (logError) {
-      // Don't fail if logging fails
-    }
+    } catch {}
 
-    return updatedSetting;
+    return { ...updatedSetting, _id: updatedSetting.id, setBy: updatedSetting.setById };
   }
 
   async getSessionStatus(): Promise<SessionStatusResponseDto> {
@@ -113,14 +108,13 @@ export class SessionManagementService {
 
     if (!activeHoursSetting) {
       return {
-        isActiveHours: true, // No restrictions if no setting exists
+        isActiveHours: true,
         currentTime: currentTime.toISOString(),
         message: 'No active hours restrictions configured',
       };
     }
 
     const isWithinActiveHours = this.isCurrentTimeWithinActiveHours(activeHoursSetting);
-
     return {
       isActiveHours: isWithinActiveHours,
       currentTime: currentTime.toISOString(),
@@ -128,94 +122,70 @@ export class SessionManagementService {
         startTime: activeHoursSetting.startTime,
         endTime: activeHoursSetting.endTime,
         timezone: activeHoursSetting.timezone,
-        setBy: activeHoursSetting.setBy.toString(),
+        setBy: activeHoursSetting.setById,
         setByEmail: activeHoursSetting.setByEmail,
         description: activeHoursSetting.description,
       },
-      message: isWithinActiveHours 
-        ? 'Currently within active hours' 
+      message: isWithinActiveHours
+        ? 'Currently within active hours'
         : 'Currently outside active hours - access restricted',
     };
   }
 
-  async isActiveHours(): Promise<{ isWithinHours: boolean; setting?: SessionManagementDocument }> {
+  async isActiveHours(): Promise<{ isWithinHours: boolean; setting?: any }> {
     const setting = await this.getActiveHours();
-    
-    if (!setting) {
-      return { isWithinHours: true }; // No restrictions if no setting
-    }
-
+    if (!setting) return { isWithinHours: true };
     return {
       isWithinHours: this.isCurrentTimeWithinActiveHours(setting),
       setting,
     };
   }
 
-  private isCurrentTimeWithinActiveHours(setting: SessionManagementDocument): boolean {
+  private isCurrentTimeWithinActiveHours(setting: any): boolean {
     try {
       const now = new Date();
-      
-      // Convert current time to the configured timezone
-      const currentTimeInTimezone = new Date(now.toLocaleString('en-US', { 
-        timeZone: setting.timezone 
-      }));
-
-      // Get current hour and minute
+      const currentTimeInTimezone = new Date(
+        now.toLocaleString('en-US', { timeZone: setting.timezone }),
+      );
       const currentHour = currentTimeInTimezone.getHours();
       const currentMinute = currentTimeInTimezone.getMinutes();
       const currentTimeInMinutes = currentHour * 60 + currentMinute;
 
-      // Parse start and end times
       const [startHour, startMinute] = setting.startTime.split(':').map(Number);
       const [endHour, endMinute] = setting.endTime.split(':').map(Number);
-      
       const startTimeInMinutes = startHour * 60 + startMinute;
       const endTimeInMinutes = endHour * 60 + endMinute;
 
-      // Handle cases where end time is next day (e.g., 22:00 - 06:00)
       if (endTimeInMinutes <= startTimeInMinutes) {
-        // Spans midnight
         return currentTimeInMinutes >= startTimeInMinutes || currentTimeInMinutes <= endTimeInMinutes;
       } else {
-        // Same day
         return currentTimeInMinutes >= startTimeInMinutes && currentTimeInMinutes <= endTimeInMinutes;
       }
-    } catch (error) {
-      console.error('Error checking active hours:', error);
-      return true; // Default to allowing access if there's an error
+    } catch {
+      return true;
     }
   }
 
   private validateTimeRange(startTime: string, endTime: string): void {
     const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
-    
     if (!timeRegex.test(startTime)) {
       throw new BadRequestException('Invalid startTime format. Use HH:mm (24-hour)');
     }
-    
     if (!timeRegex.test(endTime)) {
       throw new BadRequestException('Invalid endTime format. Use HH:mm (24-hour)');
     }
-
-    // Additional validation can be added here if needed
-    // For now, we allow overnight ranges (e.g., 22:00 - 06:00)
   }
 
-  async deactivateActiveHours(
-    currentUser: UserDocument,
-    device?: string,
-  ): Promise<{ message: string }> {
-    // Only MAINTAINER can deactivate active hours
+  async deactivateActiveHours(currentUser: any, device?: string): Promise<{ message: string }> {
     if (currentUser.role !== UserRole.MAINTAINER) {
       throw new ForbiddenException('Only MAINTAINERs can deactivate active hours');
     }
 
-    const result = await this.sessionManagementModel.updateMany(
-      { isActive: true },
-      { isActive: false }
-    );
+    const result = await this.prisma.sessionManagement.updateMany({
+      where: { isActive: true },
+      data: { isActive: false },
+    });
 
-    // Log the activity
     try {
       await this.systemActivityLogService.createLog({
         action: 'SESSION_HOURS_DEACTIVATED',
@@ -224,22 +194,21 @@ export class SessionManagementService {
         role: currentUser.role || 'SYSTEM',
         device: device || 'System',
       });
-    } catch (logError) {
-      // Don't fail if logging fails
-    }
+    } catch {}
 
     return {
-      message: result.modifiedCount > 0 
-        ? 'Active hours have been deactivated successfully' 
-        : 'No active hours were found to deactivate',
+      message:
+        result.count > 0
+          ? 'Active hours have been deactivated successfully'
+          : 'No active hours were found to deactivate',
     };
   }
 
-  async getActiveHoursHistory(): Promise<SessionManagementDocument[]> {
-    return this.sessionManagementModel
-      .find()
-      .sort({ createdAt: -1 })
-      .limit(10)
-      .exec();
+  async getActiveHoursHistory(): Promise<any[]> {
+    const settings = await this.prisma.sessionManagement.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    });
+    return settings.map((s) => ({ ...s, _id: s.id, setBy: s.setById }));
   }
 }

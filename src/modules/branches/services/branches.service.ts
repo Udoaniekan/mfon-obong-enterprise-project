@@ -3,11 +3,8 @@ import {
   NotFoundException,
   ConflictException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import { Branch, BranchDocument } from '../schemas/branch.schema';
+import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateBranchDto, UpdateBranchDto } from '../dto/branch.dto';
-import { UserDocument } from '../../users/schemas/user.schema';
 import { UserRole } from '../../../common/enums';
 import { SystemActivityLogService } from '../../system-activity-logs/services/system-activity-log.service';
 import { extractDeviceInfo } from 'src/modules/system-activity-logs/utils/device-extractor.util';
@@ -15,140 +12,125 @@ import { extractDeviceInfo } from 'src/modules/system-activity-logs/utils/device
 @Injectable()
 export class BranchesService {
   constructor(
-    @InjectModel(Branch.name) private branchModel: Model<BranchDocument>,
+    private readonly prisma: PrismaService,
     private readonly systemActivityLogService: SystemActivityLogService,
   ) {}
+
+  private toDoc(branch: any) {
+    if (!branch) return branch;
+    return { ...branch, _id: branch.id };
+  }
 
   async create(
     createBranchDto: CreateBranchDto,
     currentUser?: { email: string; role: string; name?: string },
     userAgent?: string,
-  ): Promise<BranchDocument> {
+  ): Promise<any> {
     try {
-      const branch = new this.branchModel(createBranchDto);
-      const savedBranch = await branch.save();
+      const branch = await this.prisma.branch.create({ data: createBranchDto });
 
-      // Log branch creation
       try {
         await this.systemActivityLogService.createLog({
           action: 'BRANCH_CREATED',
-          details: `${savedBranch.name} has been created. Location: ${savedBranch.address}`,
+          details: `${branch.name} has been created. Location: ${branch.address}`,
           performedBy: currentUser?.email || currentUser?.name || 'System',
           role: currentUser?.role || 'SYSTEM',
           device: extractDeviceInfo(userAgent) || '',
         });
-      } catch (logError) {
-        console.error('Failed to log branch creation:', logError);
-      }
+      } catch {}
 
-      return savedBranch;
+      return this.toDoc(branch);
     } catch (error) {
-      if (error.code === 11000) {
+      if (error?.code === 'P2002') {
         throw new ConflictException('Branch name already exists');
       }
       throw error;
     }
   }
 
-  async findAll(
-    currentUser?: UserDocument,
-    includeInactive = false,
-  ): Promise<BranchDocument[]> {
-    const query: any = includeInactive ? {} : { isActive: true };
+  async findAll(currentUser?: any, includeInactive = false): Promise<any[]> {
+    const where: any = includeInactive ? {} : { isActive: true };
 
-    // Role-based access control
     if (
       currentUser?.role === UserRole.ADMIN ||
       currentUser?.role === UserRole.STAFF
     ) {
-      // ADMIN and STAFF can only see their own branch
-      query._id = currentUser.branchId;
+      where.id = currentUser.branchId;
     }
-    // MAINTAINER and SUPER_ADMIN can see all branches
 
-    return this.branchModel.find(query).exec();
+    const branches = await this.prisma.branch.findMany({ where });
+    return branches.map(this.toDoc);
   }
 
-  async findById(
-    id: string,
-    currentUser?: UserDocument,
-  ): Promise<BranchDocument> {
-    // Role-based access control
+  async findById(id: string, currentUser?: any): Promise<any> {
     if (
       currentUser?.role === UserRole.ADMIN ||
       currentUser?.role === UserRole.STAFF
     ) {
-      // ADMIN and STAFF can only access their own branch
       if (currentUser.branchId?.toString() !== id) {
         throw new NotFoundException('Branch not found');
       }
     }
 
-    const branch = await this.branchModel.findById(id);
-    if (!branch) {
-      throw new NotFoundException('Branch not found');
-    }
-    return branch;
+    const branch = await this.prisma.branch.findUnique({ where: { id } });
+    if (!branch) throw new NotFoundException('Branch not found');
+    return this.toDoc(branch);
   }
 
-  async findByName(name: string): Promise<BranchDocument | null> {
-    return this.branchModel.findOne({ name }).exec();
+  async findByName(name: string): Promise<any> {
+    const branch = await this.prisma.branch.findUnique({ where: { name } });
+    return branch ? this.toDoc(branch) : null;
   }
 
   async update(
     id: string,
     updateBranchDto: UpdateBranchDto,
-    currentUser?: UserDocument,
+    currentUser?: any,
     device?: string,
-  ): Promise<BranchDocument> {
-    // Role-based access control
+  ): Promise<any> {
     if (
       currentUser?.role === UserRole.ADMIN ||
       currentUser?.role === UserRole.STAFF
     ) {
-      // ADMIN and STAFF cannot update branches (this should be prevented by guards, but extra safety)
       throw new NotFoundException('Branch not found');
     }
 
-    const branch = await this.findById(id, currentUser);
+    await this.findById(id, currentUser);
 
     try {
-      Object.assign(branch, updateBranchDto);
-      const savedBranch = await branch.save();
+      const branch = await this.prisma.branch.update({
+        where: { id },
+        data: updateBranchDto,
+      });
 
-      // Log branch update activity
       try {
         const changes = Object.keys(updateBranchDto).join(', ');
         await this.systemActivityLogService.createLog({
           action: 'BRANCH_UPDATED',
-          details: `Branch updated: ${savedBranch.name} - Changes: ${changes}`,
+          details: `Branch updated: ${branch.name} - Changes: ${changes}`,
           performedBy: currentUser?.email || currentUser?.name || 'System',
           role: currentUser?.role || 'SYSTEM',
           device: device || 'System',
         });
-      } catch (logError) {
-        console.error('Failed to log branch update:', logError);
-      }
+      } catch {}
 
-      return savedBranch;
+      return this.toDoc(branch);
     } catch (error) {
-      if (error.code === 11000) {
+      if (error?.code === 'P2002') {
         throw new ConflictException('Branch name already exists');
       }
       throw error;
     }
   }
 
-  async remove(
-    id: string,
-    currentUser?: UserDocument,
-    device?: string,
-  ): Promise<void> {
+  async remove(id: string, currentUser?: any, device?: string): Promise<void> {
     const branch = await this.findById(id, currentUser);
-    branch.isActive = false;
-    await branch.save();
 
-    // Log branch deactivation activity
+    await this.prisma.branch.update({
+      where: { id },
+      data: { isActive: false },
+    });
+
     try {
       await this.systemActivityLogService.createLog({
         action: 'BRANCH_DEACTIVATED',
@@ -157,15 +139,15 @@ export class BranchesService {
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
       });
-    } catch (logError) {
-      console.error('Failed to log branch deactivation:', logError);
-    }
+    } catch {}
   }
 
   async hardRemove(id: string): Promise<void> {
-    const result = await this.branchModel.findByIdAndDelete(id);
-    if (!result) {
-      throw new NotFoundException('Branch not found');
+    try {
+      await this.prisma.branch.delete({ where: { id } });
+    } catch (error) {
+      if (error?.code === 'P2025') throw new NotFoundException('Branch not found');
+      throw error;
     }
   }
 }

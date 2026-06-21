@@ -30,7 +30,7 @@ export class BranchNotificationController {
       throw new NotFoundException('Notification not found');
     }
 
-    if (notification.branch.toString() !== adminBranch.toString()) {
+    if (notification.branchId.toString() !== adminBranch.toString()) {
       throw new ForbiddenException('You do not have access to this notification');
     }
 
@@ -51,7 +51,7 @@ export class BranchNotificationController {
       throw new NotFoundException('Notification not found');
     }
 
-    if (notification.branch.toString() !== adminBranch.toString()) {
+    if (notification.branchId.toString() !== adminBranch.toString()) {
       throw new ForbiddenException('You do not have access to delete this notification');
     }
 

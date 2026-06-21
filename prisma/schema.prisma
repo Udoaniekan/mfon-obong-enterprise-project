@@ -1,0 +1,311 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                      String    @id @default(cuid())
+  name                    String
+  email                   String    @unique
+  password                String
+  phone                   String
+  address                 String?
+  role                    UserRole  @default(STAFF)
+  isActive                Boolean   @default(true)
+  lastLogin               DateTime?
+  branchId                String
+  branchRef               Branch    @relation(fields: [branchId], references: [id])
+  branch                  String?
+  branchAddress           String?
+  profilePicture          String?
+  profilePictureMeta      Json?
+  isBlocked               Boolean   @default(false)
+  blockReason             String?
+  isTemporaryPassword     Boolean   @default(false)
+  temporaryPasswordExpiry DateTime?
+  mustChangePassword      Boolean   @default(false)
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  transactions            Transaction[]
+  refreshTokens           RefreshToken[]
+  columnSettings          ColumnSetting[]
+  maintenanceActivated    MaintenanceMode[]   @relation("ActivatedBy")
+  maintenanceDeactivated  MaintenanceMode[]   @relation("DeactivatedBy")
+  sessionManagements      SessionManagement[]
+  branchNotifications     BranchNotification[]
+}
+
+model Branch {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  address     String
+  phone       String
+  email       String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  users               User[]
+  products            Product[]
+  transactions        Transaction[]
+  branchNotifications BranchNotification[]
+}
+
+model Category {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  units       String[]
+  isActive    Boolean   @default(true)
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  products Product[]
+}
+
+model Product {
+  id            String    @id @default(cuid())
+  name          String
+  categoryId    String
+  categoryRef   Category  @relation(fields: [categoryId], references: [id])
+  unit          String
+  unitPrice     Float
+  stock         Float     @default(0)
+  minStockLevel Float     @default(0)
+  isActive      Boolean   @default(true)
+  priceHistory  Json      @default("[]")
+  branchId      String
+  branchRef     Branch    @relation(fields: [branchId], references: [id])
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  transactionItems TransactionItem[]
+
+  @@unique([name, branchId])
+}
+
+model Client {
+  id                  String    @id @default(cuid())
+  name                String
+  phone               String    @unique
+  email               String?
+  description         String?
+  address             String?
+  balance             Float     @default(0)
+  isActive            Boolean   @default(true)
+  lastTransactionDate DateTime?
+  isRegistered        Boolean   @default(false)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  transactions Transaction[]
+}
+
+model Transaction {
+  id                            String            @id @default(cuid())
+  invoiceNumber                 String            @unique
+  type                          TransactionType
+  clientId                      String?
+  clientRef                     Client?           @relation(fields: [clientId], references: [id])
+  walkInClientName              String?
+  walkInClientPhone             String?
+  walkInClientAddress           String?
+  userId                        String
+  userRef                       User              @relation(fields: [userId], references: [id])
+  items                         TransactionItem[]
+  extraCharges                  ExtraCharge[]
+  subtotal                      Float             @default(0)
+  discount                      Float             @default(0)
+  transportFare                 Float             @default(0)
+  loadingAndOffloading          Float             @default(0)
+  loading                       Float             @default(0)
+  total                         Float             @default(0)
+  amountPaid                    Float             @default(0)
+  paymentMethod                 String?
+  isPickedUp                    Boolean           @default(false)
+  pickupDate                    DateTime?
+  date                          DateTime?
+  branchId                      String
+  branchRef                     Branch            @relation(fields: [branchId], references: [id])
+  waybillNumber                 String?           @unique
+  status                        TransactionStatus @default(PENDING)
+  notes                         String?
+  referenceTransactionId        String?
+  referenceTransaction          Transaction?      @relation("ReturnRef", fields: [referenceTransactionId], references: [id])
+  returnTransactions            Transaction[]     @relation("ReturnRef")
+  reason                        String?
+  totalRefundedAmount           Float?
+  actualAmountReturned          Float?
+  clientBalanceAfterTransaction Float?
+  createdAt                     DateTime          @default(now())
+  updatedAt                     DateTime          @updatedAt
+}
+
+model TransactionItem {
+  id                String      @id @default(cuid())
+  transactionId     String
+  transaction       Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  productId         String
+  productRef        Product     @relation(fields: [productId], references: [id])
+  productName       String
+  quantity          Float
+  unit              String
+  unitPrice         Float
+  discount          Float       @default(0)
+  subtotal          Float
+  wholesalePrice    Float?
+  originalUnitPrice Float?
+  currentUnitPrice  Float?
+  refundUnitPrice   Float?
+}
+
+model ExtraCharge {
+  id            String      @id @default(cuid())
+  transactionId String
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  name          String
+  amount        Float
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  userRef   User     @relation(fields: [userId], references: [id])
+  email     String
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  userAgent String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model BlacklistedToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Otp {
+  id        String   @id @default(cuid())
+  email     String
+  otp       String
+  userId    String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ColumnSetting {
+  id             String   @id @default(cuid())
+  userId         String
+  userRef        User     @relation(fields: [userId], references: [id])
+  tableName      String   @default("users")
+  visibleColumns String[]
+  columnOrder    String[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([userId, tableName])
+}
+
+model MaintenanceMode {
+  id                 String    @id @default(cuid())
+  isActive           Boolean   @default(false)
+  activatedById      String
+  activatedBy        User      @relation("ActivatedBy", fields: [activatedById], references: [id])
+  reason             String?
+  activatedAt        DateTime  @default(now())
+  deactivatedById    String?
+  deactivatedBy      User?     @relation("DeactivatedBy", fields: [deactivatedById], references: [id])
+  deactivatedAt      DateTime?
+  deactivationReason String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+}
+
+model Notification {
+  id                String   @id @default(cuid())
+  userEmail         String
+  userId            String?
+  message           String?
+  branch            String?
+  temporaryPassword String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model BranchNotification {
+  id                String   @id @default(cuid())
+  branchId          String
+  branchRef         Branch   @relation(fields: [branchId], references: [id])
+  message           String
+  temporaryPassword String
+  createdById       String
+  createdBy         User     @relation(fields: [createdById], references: [id])
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model SessionManagement {
+  id          String   @id @default(cuid())
+  startTime   String
+  endTime     String
+  timezone    String
+  setById     String
+  setByRef    User     @relation(fields: [setById], references: [id])
+  setByEmail  String
+  isActive    Boolean  @default(true)
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model SystemActivityLog {
+  id          String   @id @default(cuid())
+  action      String
+  details     String
+  performedBy String
+  role        String
+  device      String
+  branchId    String?
+  timestamp   DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Counter {
+  id    Int    @id @default(autoincrement())
+  name  String @unique
+  value Int    @default(0)
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  MAINTAINER
+  STAFF
+}
+
+enum TransactionType {
+  DEPOSIT
+  PURCHASE
+  RETURN
+  WHOLESALE
+  PICKUP
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}

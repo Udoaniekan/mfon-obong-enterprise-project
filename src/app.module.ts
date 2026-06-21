@@ -1,9 +1,8 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { MongooseModule } from '@nestjs/mongoose';
-// import configuration from './config/configuration';
+import { ConfigModule } from '@nestjs/config';
 import { AppService } from './app.service';
 import { AppController } from './app.controller';
+import { PrismaModule } from './prisma/prisma.module';
 import { SeedModule } from './modules/seed/seed.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
@@ -19,23 +18,16 @@ import { SessionManagementModule } from './modules/session-management/session-ma
 import { ColumnSettingsModule } from './modules/column-settings/column-settings.module';
 import { HealthModule } from './modules/health/health.module';
 import { WebSocketModule } from './modules/websocket/websocket.module';
-import { databaseConfig, jwtConfig } from './config/configuration';
+import { jwtConfig } from './config/configuration';
 import { NotificationsModule } from './modules/notifications/notifications.module';
-// ... your other imports
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [databaseConfig, jwtConfig], // Restored
+      load: [jwtConfig],
     }),
-    MongooseModule.forRootAsync({
-      imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
-        uri: configService.get<string>('MONGODB_URI'), // Also updated to match your config structure
-      }),
-      inject: [ConfigService],
-    }),
+    PrismaModule,
     UsersModule,
     AuthModule,
     BranchesModule,
@@ -43,7 +35,6 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     ProductsModule,
     ClientsModule,
     TransactionsModule,
-
     ReportsModule,
     SeedModule,
     SystemActivityLogModule,
@@ -52,7 +43,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     ColumnSettingsModule,
     HealthModule,
     WebSocketModule,
-    NotificationsModule
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

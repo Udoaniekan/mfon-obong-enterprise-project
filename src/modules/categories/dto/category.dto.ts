@@ -4,7 +4,6 @@ import {
   IsArray,
   IsOptional,
   IsBoolean,
-  IsMongoId,
 } from 'class-validator';
 
 export class CreateCategoryDto {

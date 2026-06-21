@@ -1,65 +1,44 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import {
-  SystemActivityLog,
-  SystemActivityLogDocument,
-} from '../schemas/system-activity-log.schema';
+import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateSystemActivityLogDto } from '../dto/system-activity-log.dto';
 
 @Injectable()
 export class SystemActivityLogService {
   private readonly logger = new Logger(SystemActivityLogService.name);
 
-  constructor(
-    @InjectModel(SystemActivityLog.name)
-    private readonly systemActivityLogModel: Model<SystemActivityLogDocument>,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-    async createLog(
-      createSystemActivityLogDto: CreateSystemActivityLogDto,
-    ): Promise<SystemActivityLog> {
-      try {
-        this.logger.log(
-          `Creating log entry: ${createSystemActivityLogDto.action}`,
-        );
-
-        const logEntry = new this.systemActivityLogModel({
-          ...createSystemActivityLogDto,
-          timestamp: createSystemActivityLogDto.timestamp || new Date(),
-        });
-
-        const savedLog = await logEntry.save();
-        this.logger.log(
-          `Log entry created successfully with ID: ${savedLog._id}`,
-        );
-
-        return savedLog;
-      } catch (error) {
-        this.logger.error(
-          `Error creating log entry: ${error.message}`,
-          error.stack,
-        );
-        throw error;
-      }
+  async createLog(dto: CreateSystemActivityLogDto): Promise<any> {
+    try {
+      this.logger.log(`Creating log entry: ${dto.action}`);
+      const log = await this.prisma.systemActivityLog.create({
+        data: {
+          action: dto.action,
+          details: dto.details,
+          performedBy: dto.performedBy,
+          role: dto.role,
+          device: dto.device || '',
+          branchId: dto.branchId,
+          timestamp: dto.timestamp || new Date(),
+        },
+      });
+      this.logger.log(`Log entry created: ${log.id}`);
+      return { ...log, _id: log.id };
+    } catch (error) {
+      this.logger.error(`Error creating log: ${error.message}`, error.stack);
+      throw error;
     }
-
-  async getLogs(): Promise<SystemActivityLog[]> {
-  try {
-    this.logger.log(`Fetching all system activity logs`);
-
-    const logs = await this.systemActivityLogModel
-      .find()
-      .sort({ timestamp: -1 }) // newest first
-      .exec();
-
-    this.logger.log(`Found ${logs.length} log entries`);
-
-    return logs;
-  } catch (error) {
-    this.logger.error(`Error fetching logs: ${error.message}`, error.stack);
-    throw error;
   }
-}
 
+  async getLogs(): Promise<any[]> {
+    try {
+      const logs = await this.prisma.systemActivityLog.findMany({
+        orderBy: { timestamp: 'desc' },
+      });
+      return logs.map(l => ({ ...l, _id: l.id }));
+    } catch (error) {
+      this.logger.error(`Error fetching logs: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
 }

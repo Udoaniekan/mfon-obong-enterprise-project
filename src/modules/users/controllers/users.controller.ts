@@ -19,7 +19,6 @@ import { BlockUserDto } from '../dto/block-user.dto';
 import { UpdatePasswordDto } from '../dto/update-password.dto';
 // ...existing code...
 // ...existing code...
-import { User } from '../schemas/user.schema';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { UserRole } from '../../../common/enums';
@@ -43,33 +42,33 @@ export class UsersController {
     @Param('id') id: string,
     @Body() blockUserDto: BlockUserDto,
     @Request() req,
-  ): Promise<User> {
+  ): Promise<any> {
     const device = extractDeviceInfo(req.headers['user-agent'] || '');
     return this.usersService.blockUser(id, blockUserDto, req.user, device);
   }
   @Patch(':id/unblock')
   @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER)
-  async unblockUser(@Param('id') id: string, @Request() req): Promise<User> {
+  async unblockUser(@Param('id') id: string, @Request() req): Promise<any> {
     const device = extractDeviceInfo(req.headers['user-agent'] || '');
     return this.usersService.unblockUser(id, req.user, device);
   }
 
   @Post()
   @Roles(UserRole.MAINTAINER)
-  async create(@Body() createUserDto: CreateUserDto, @Request() req): Promise<User> {
+  async create(@Body() createUserDto: CreateUserDto, @Request() req): Promise<any> {
     const device = extractDeviceInfo(req.headers['user-agent'] || '');
     return this.usersService.create(createUserDto, req.user, device);
   }
 
   @Get()
   @Roles(UserRole.SUPER_ADMIN, UserRole.MAINTAINER)
-  async findAll(@Request() req): Promise<User[]> {
+  async findAll(@Request() req): Promise<any[]> {
     return this.usersService.findAll(req.user);
   }
 
   @Get(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAINTAINER, UserRole.STAFF)
-  async findOne(@Param('id') id: string, @Request() req): Promise<User> {
+  async findOne(@Param('id') id: string, @Request() req): Promise<any> {
     // STAFF can only access their own profile
     if (req.user.role === UserRole.STAFF && req.user.userId !== id) {
       throw new NotFoundException('User not found');
@@ -96,7 +95,7 @@ export class UsersController {
     @Param('id') id: string,
     @Body() updateUserDto: UpdateUserDto,
     @Request() req,
-  ): Promise<User> {
+  ): Promise<any> {
     const user = await this.usersService.findById(id, req.user);
     // Only allow ADMIN to update users from their own branch
     if (
@@ -193,7 +192,7 @@ export class UsersController {
   async getUsersByBranch(
     @Param('branchId') branchId: string,
     @Request() req,
-  ): Promise<User[]> {
+  ): Promise<any[]> {
     // Only allow ADMIN to access their own branch
     if (req.user.role === UserRole.ADMIN && req.user.branchId !== branchId) {
       throw new ForbiddenException('Forbidden: ADMIN can only access their own branch');

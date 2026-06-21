@@ -17,7 +17,6 @@ import {
   AddTransactionDto,
   QueryClientsDto,
 } from '../dto/client.dto';
-import { Client } from '../schemas/client.schema';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { UserRole } from '../../../common/enums';
@@ -34,7 +33,7 @@ export class ClientsController {
   async create(
     @Body() createClientDto: CreateClientDto,
     @Request() req,
-  ): Promise<Client> {
+  ): Promise<any> {
     return this.clientsService.create(createClientDto, req.user);
   }
 
@@ -45,7 +44,7 @@ export class ClientsController {
     UserRole.MAINTAINER,
     UserRole.STAFF,
   )
-  async createWalkInClient(@Request() req): Promise<Client> {
+  async createWalkInClient(@Request() req): Promise<any> {
     return this.clientsService.createWalkInClient(req.user);
   }
 
@@ -59,7 +58,7 @@ export class ClientsController {
   async findAll(
     @Query() query: QueryClientsDto,
     @Request() req,
-  ): Promise<Client[]> {
+  ): Promise<any[]> {
     return this.clientsService.findAll(query, req.user);
   }
 
@@ -73,7 +72,7 @@ export class ClientsController {
   async findAllActive(
     @Query() query: QueryClientsDto,
     @Request() req,
-  ): Promise<Client[]> {
+  ): Promise<any[]> {
     return this.clientsService.findAllActive(query, req.user);
   }
 
@@ -82,7 +81,7 @@ export class ClientsController {
   async findDebtors(
     @Request() req,
     @Query('minAmount') minAmount?: number,
-  ): Promise<Client[]> {
+  ): Promise<any[]> {
     const parsedMinAmount = minAmount ? Number(minAmount) : 0;
     return this.clientsService.findDebtors(parsedMinAmount, req.user);
   }
@@ -94,7 +93,7 @@ export class ClientsController {
     UserRole.MAINTAINER,
     UserRole.STAFF,
   )
-  async findOne(@Param('id') id: string, @Request() req): Promise<Client> {
+  async findOne(@Param('id') id: string, @Request() req): Promise<any> {
     return this.clientsService.findById(id, req.user);
   }
 
@@ -125,7 +124,7 @@ export class ClientsController {
     @Param('id') id: string,
     @Body() updateClientDto: UpdateClientDto,
     @Request() req,
-  ): Promise<Client> {
+  ): Promise<any> {
     return this.clientsService.update(id, updateClientDto, req.user);
   }
 
@@ -140,7 +139,7 @@ export class ClientsController {
     @Param('id') id: string,
     @Body() transactionDto: AddTransactionDto,
     @Request() req,
-  ): Promise<Client> {
+  ): Promise<any> {
     return this.clientsService.addTransaction(id, transactionDto, req.user);
   }
 
@@ -157,13 +156,13 @@ export class ClientsController {
 
   @Patch(':id/block')
   @Roles(UserRole.SUPER_ADMIN)
-  async blockClient(@Param('id') id: string, @Request() req): Promise<Client> {
+  async blockClient(@Param('id') id: string, @Request() req): Promise<any> {
     return this.clientsService.blockClient(id, req.user);
   }
 
   @Patch(':id/unblock')
   @Roles(UserRole.SUPER_ADMIN)
-  async unblockClient(@Param('id') id: string, @Request() req): Promise<Client> {
+  async unblockClient(@Param('id') id: string, @Request() req): Promise<any> {
     return this.clientsService.unblockClient(id, req.user);
   }
 

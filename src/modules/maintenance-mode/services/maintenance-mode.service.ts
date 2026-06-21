@@ -1,132 +1,125 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-import { MaintenanceMode, MaintenanceModeDocument } from '../schemas/maintenance-mode.schema';
+import { PrismaService } from '../../../prisma/prisma.service';
 import { ToggleMaintenanceModeDto } from '../dto/maintenance-mode.dto';
-import { User, UserDocument } from '../../users/schemas/user.schema';
 import { SystemActivityLogService } from '../../system-activity-logs/services/system-activity-log.service';
-import { extractDeviceInfo } from '../../system-activity-logs/utils/device-extractor.util';
-import { Notification, NotificationDocument } from '../schemas/notification.schema';
-import { BranchNotification, BranchNotificationDocument } from '../../notifications/schemas/branch-notification.schema';
 import { AppWebSocketGateway } from '../../websocket/websocket.gateway';
 
 @Injectable()
 export class MaintenanceModeService {
   constructor(
-    @InjectModel(MaintenanceMode.name)
-    private readonly maintenanceModeModel: Model<MaintenanceModeDocument>,
+    private readonly prisma: PrismaService,
     private readonly systemActivityLogService: SystemActivityLogService,
-    @InjectModel(Notification.name) private notificationModel: Model<NotificationDocument>,
-    @InjectModel(BranchNotification.name) private branchNotificationModel: Model<BranchNotificationDocument>,
-    @InjectModel(User.name) private userModel: Model<UserDocument>,
     private readonly websocketGateway: AppWebSocketGateway,
   ) {}
 
-  async getCurrentMode(): Promise<MaintenanceModeDocument | null> {
-    // Get the most recent maintenance mode record
-    const mode = await this.maintenanceModeModel
-      .findOne()
-      .sort({ activatedAt: -1 })
-      .populate('activatedBy', 'name email')
-      .populate('deactivatedBy', 'name email')
-      .exec();
-    
-    return mode;
+  private readonly maintenanceInclude = {
+    activatedBy: { select: { id: true, name: true, email: true } },
+    deactivatedBy: { select: { id: true, name: true, email: true } },
+  };
+
+  private toDoc(mode: any) {
+    if (!mode) return mode;
+    const { activatedBy, deactivatedBy, ...rest } = mode;
+    return {
+      ...rest,
+      _id: mode.id,
+      activatedBy: activatedBy ? { _id: activatedBy.id, ...activatedBy } : mode.activatedById,
+      deactivatedBy: deactivatedBy ? { _id: deactivatedBy.id, ...deactivatedBy } : mode.deactivatedById,
+    };
+  }
+
+  async getCurrentMode(): Promise<any | null> {
+    const mode = await this.prisma.maintenanceMode.findFirst({
+      orderBy: { activatedAt: 'desc' },
+      include: this.maintenanceInclude,
+    });
+    return this.toDoc(mode);
   }
 
   async isMaintenanceMode(): Promise<{ isActive: boolean; activatedBy?: string }> {
     const mode = await this.getCurrentMode();
-    
-    if (!mode) {
-      return { isActive: false };
-    }
-
+    if (!mode) return { isActive: false };
     return {
       isActive: mode.isActive,
-      activatedBy: mode.isActive && mode.activatedBy ? mode.activatedBy.toString() : undefined
+      activatedBy: mode.isActive && mode.activatedById ? mode.activatedById : undefined,
     };
   }
 
   async toggleMaintenanceMode(
     toggleDto: ToggleMaintenanceModeDto,
-    currentUser: UserDocument,
+    currentUser: any,
     device?: string,
   ): Promise<{ isActive: boolean; message: string }> {
-    if (!currentUser || !currentUser._id) {
-      throw new Error('Invalid or missing currentUser in toggleMaintenanceMode');
-    }
+    if (!currentUser) throw new Error('Invalid or missing currentUser in toggleMaintenanceMode');
+
     const currentMode = await this.getCurrentMode();
     const newState = !currentMode?.isActive || false;
 
     if (newState) {
-      // ACTIVATING: First, set all previous records to isActive: false (cleanup)
-      await this.maintenanceModeModel.updateMany({ isActive: true }, { $set: { isActive: false } });
-
-      // Now create a new active record
-      const newMode = new this.maintenanceModeModel({
-        isActive: true,
-        activatedBy: new Types.ObjectId(currentUser._id?.toString()),
-        reason: toggleDto.reason || 'Maintenance mode activated',
-        activatedAt: new Date(),
+      await this.prisma.maintenanceMode.updateMany({
+        where: { isActive: true },
+        data: { isActive: false },
       });
-      await newMode.save();
 
-      // Log activation
+      await this.prisma.maintenanceMode.create({
+        data: {
+          isActive: true,
+          activatedById: currentUser._id?.toString() || currentUser.id,
+          reason: toggleDto.reason || 'Maintenance mode activated',
+          activatedAt: new Date(),
+        },
+      });
+
       try {
         await this.systemActivityLogService.createLog({
           action: 'MAINTENANCE_MODE_ACTIVATED',
           details: `Maintenance mode activated by ${currentUser.name || currentUser.email}. Reason: ${toggleDto.reason || 'No reason provided'}`,
-          performedBy: currentUser.email || currentUser.name || currentUser._id.toString(),
+          performedBy: currentUser.email || currentUser.name || currentUser._id?.toString() || currentUser.id,
           role: currentUser.role,
           device: device || 'System',
         });
-      } catch (logError) {
-        // Optionally log error
-      }
+      } catch {}
 
-      // Emit WebSocket event to force logout all non-MAINTAINER users
       try {
-        console.log('🔔 Emitting maintenance_mode_activated event to all clients');
         this.websocketGateway.server.emit('maintenance_mode_activated', {
           message: 'System is entering maintenance mode. Please save your work.',
           reason: toggleDto.reason || 'Maintenance mode activated',
           activatedBy: currentUser.name || currentUser.email,
           timestamp: new Date().toISOString(),
         });
-        console.log('✅ maintenance_mode_activated event emitted successfully');
       } catch (wsError) {
-        console.error('❌ Failed to emit maintenance mode WebSocket event:', wsError);
+        console.error('Failed to emit maintenance mode WebSocket event:', wsError);
       }
 
-      return {
-        isActive: true,
-        message: 'Maintenance mode activated. Only MAINTAINER can access the system.'
-      };
+      return { isActive: true, message: 'Maintenance mode activated. Only MAINTAINER can access the system.' };
     } else {
-      // DEACTIVATING: Only update the latest active record
-      const activeMode = await this.maintenanceModeModel.findOne({ isActive: true }).sort({ activatedAt: -1 });
+      const activeMode = await this.prisma.maintenanceMode.findFirst({
+        where: { isActive: true },
+        orderBy: { activatedAt: 'desc' },
+      });
+
       if (activeMode) {
-        activeMode.isActive = false;
-        activeMode.deactivatedBy = new Types.ObjectId(currentUser._id?.toString());
-        activeMode.deactivatedAt = new Date();
-        activeMode.deactivationReason = toggleDto.reason || 'Maintenance mode deactivated';
-        await activeMode.save();
+        await this.prisma.maintenanceMode.update({
+          where: { id: activeMode.id },
+          data: {
+            isActive: false,
+            deactivatedById: currentUser._id?.toString() || currentUser.id,
+            deactivatedAt: new Date(),
+            deactivationReason: toggleDto.reason || 'Maintenance mode deactivated',
+          },
+        });
       }
 
-      // Log deactivation
       try {
         await this.systemActivityLogService.createLog({
           action: 'MAINTENANCE_MODE_DEACTIVATED',
           details: `Maintenance mode deactivated by ${currentUser.name || currentUser.email}. Reason: ${toggleDto.reason || 'No reason provided'}`,
-          performedBy: currentUser.email || currentUser.name || currentUser._id.toString(),
+          performedBy: currentUser.email || currentUser.name || currentUser._id?.toString() || currentUser.id,
           role: currentUser.role,
           device: device || 'System',
         });
-      } catch (logError) {
-        // Optionally log error
-      }
+      } catch {}
 
-      // Emit WebSocket event to notify users that maintenance mode is deactivated
       try {
         this.websocketGateway.server.emit('maintenance_mode_deactivated', {
           message: 'Maintenance mode has been deactivated. System access restored.',
@@ -137,61 +130,53 @@ export class MaintenanceModeService {
         console.error('Failed to emit maintenance mode deactivation WebSocket event:', wsError);
       }
 
-      return {
-        isActive: false,
-        message: 'Maintenance mode deactivated. Normal system access restored.'
-      };
+      return { isActive: false, message: 'Maintenance mode deactivated. Normal system access restored.' };
     }
   }
 
-  async getMaintenanceHistory(): Promise<MaintenanceModeDocument[]> {
-    return this.maintenanceModeModel
-      .find()
-      .sort({ createdAt: -1 })
-      .populate('activatedBy', 'name email')
-      .populate('deactivatedBy', 'name email')
-      .limit(20) // Last 20 maintenance mode changes
-      .exec();
+  async getMaintenanceHistory(): Promise<any[]> {
+    const modes = await this.prisma.maintenanceMode.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: this.maintenanceInclude,
+      take: 20,
+    });
+    return modes.map((m) => this.toDoc(m));
   }
 
   async notifyMaintainer(email: string, message?: string): Promise<string> {
-    const notification = new this.notificationModel({
-      userEmail: email,
-      message: message || 'A user has requested support.',
+    await this.prisma.notification.create({
+      data: {
+        userEmail: email,
+        message: message || 'A user has requested support.',
+      },
     });
-    await notification.save();
-
     return `Notification sent to maintainer dashboard for email: ${email}`;
   }
 
-  async getNotifications(): Promise<Notification[]> {
-    return this.notificationModel.find().sort({ createdAt: -1 }).exec();
+  async getNotifications(): Promise<any[]> {
+    const notifications = await this.prisma.notification.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+    return notifications.map((n) => ({ ...n, _id: n.id }));
   }
 
   async notifyBranchAdmin(email: string, branch: string, temporaryPassword: string): Promise<string> {
-    try {
-      // Validate the branch ID
-      if (!Types.ObjectId.isValid(branch)) {
-        throw new BadRequestException(`Invalid branch ID provided: ${branch}`);
-      }
+    if (!branch) throw new BadRequestException(`Invalid branch ID provided: ${branch}`);
 
-      // Fetch the user by email to get their ObjectId
-      const user = await this.userModel.findOne({ email }).exec();
-      if (!user) {
-        throw new NotFoundException(`User with email ${email} does not exist in the system. Please verify the email address.`);
-      }
-
-      const notification = new this.branchNotificationModel({
-        branch: new Types.ObjectId(branch),
-        message: `A temporary password has been generated for a user in your branch.`,
-        temporaryPassword: temporaryPassword,
-        createdBy: user._id, // Use the user's ObjectId
-      });
-      await notification.save();
-
-      return `Notification sent to branch admin for branch: ${branch}`;
-    } catch (error) {
-      throw error;
+    const user = await this.prisma.user.findFirst({ where: { email } });
+    if (!user) {
+      throw new NotFoundException(`User with email ${email} does not exist in the system.`);
     }
+
+    await this.prisma.branchNotification.create({
+      data: {
+        branchId: branch,
+        message: 'A temporary password has been generated for a user in your branch.',
+        temporaryPassword,
+        createdById: user.id,
+      },
+    });
+
+    return `Notification sent to branch admin for branch: ${branch}`;
   }
 }

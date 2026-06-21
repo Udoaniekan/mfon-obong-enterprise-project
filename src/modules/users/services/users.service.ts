@@ -1,15 +1,11 @@
-// ...existing code...
-// ...existing code...
 import {
   Injectable,
   ConflictException,
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
 import * as bcrypt from 'bcrypt';
-import { User, UserDocument } from '../schemas/user.schema';
+import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateUserDto, UpdateUserDto } from '../dto/user.dto';
 import { UserRole } from '../../../common/enums';
 import { SystemActivityLogService } from '../../system-activity-logs/services/system-activity-log.service';
@@ -18,34 +14,48 @@ import { BranchesService } from '../../branches/services/branches.service';
 @Injectable()
 export class UsersService {
   constructor(
-    @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
+    private readonly prisma: PrismaService,
     private readonly systemActivityLogService: SystemActivityLogService,
     private readonly branchesService: BranchesService,
   ) {}
+
+  private transformUser(user: any, includeBranch = false) {
+    if (!user) return user;
+    const { password, branchRef, ...rest } = user;
+    return {
+      ...rest,
+      _id: user.id,
+      branchId: branchRef
+        ? { _id: branchRef.id, ...branchRef }
+        : user.branchId,
+    };
+  }
+
   async blockUser(
     id: string,
     blockUserDto: { reason?: string },
-    currentUser?: UserDocument,
+    currentUser?: any,
     device?: string,
-  ): Promise<User> {
-    const filter: any = { _id: id };
-    // Only SUPER_ADMIN and MAINTAINER can block users from other branches
+  ): Promise<any> {
+    const where: any = { id };
     if (
       currentUser &&
       ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
     ) {
-      filter.branchId = currentUser.branchId;
+      where.branchId = currentUser.branchId;
     }
-    const user = await this.userModel.findOne(filter);
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-    user.isBlocked = true;
-    if (blockUserDto.reason) {
-      user.blockReason = blockUserDto.reason;
-    }
-    await user.save();
-    // Log user block activity
+
+    const user = await this.prisma.user.findFirst({ where });
+    if (!user) throw new NotFoundException('User not found');
+
+    const updated = await this.prisma.user.update({
+      where: { id },
+      data: {
+        isBlocked: true,
+        blockReason: blockUserDto.reason,
+      },
+    });
+
     try {
       await this.systemActivityLogService.createLog({
         action: 'USER_BLOCKED',
@@ -55,33 +65,28 @@ export class UsersService {
         device: device || 'System',
         branchId: currentUser?.branchId?.toString(),
       });
-    } catch (logError) {
-      console.error('Failed to log user block:', logError);
-    }
-    return user;
+    } catch {}
+
+    return this.transformUser(updated);
   }
 
-  async unblockUser(
-    id: string,
-    currentUser?: UserDocument,
-    device?: string,
-  ): Promise<User> {
-    const filter: any = { _id: id };
-    // Only SUPER_ADMIN and MAINTAINER can unblock users from other branches
+  async unblockUser(id: string, currentUser?: any, device?: string): Promise<any> {
+    const where: any = { id };
     if (
       currentUser &&
       ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
     ) {
-      filter.branchId = currentUser.branchId;
+      where.branchId = currentUser.branchId;
     }
-    const user = await this.userModel.findOne(filter);
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-    user.isBlocked = false;
-    user.blockReason = undefined;
-    await user.save();
-    // Log user unblock activity
+
+    const user = await this.prisma.user.findFirst({ where });
+    if (!user) throw new NotFoundException('User not found');
+
+    const updated = await this.prisma.user.update({
+      where: { id },
+      data: { isBlocked: false, blockReason: null },
+    });
+
     try {
       await this.systemActivityLogService.createLog({
         action: 'USER_UNBLOCKED',
@@ -91,181 +96,168 @@ export class UsersService {
         device: device || 'System',
         branchId: currentUser?.branchId?.toString(),
       });
-    } catch (logError) {
-      console.error('Failed to log user unblock:', logError);
-    }
-    return user;
+    } catch {}
+
+    return this.transformUser(updated);
   }
+
   async create(
     createUserDto: CreateUserDto,
     currentUser?: { userId: string; email: string; role: string; name?: string },
-    device?: string
-  ): Promise<User> {
+    device?: string,
+  ): Promise<any> {
     const { email, password, branchId, branch } = createUserDto;
 
-    const existingUser = await this.userModel.findOne({ email });
-    if (existingUser) {
-      throw new ConflictException('Email already exists');
-    }
+    const existingUser = await this.prisma.user.findUnique({ where: { email } });
+    if (existingUser) throw new ConflictException('Email already exists');
 
-    // Validate that branch name matches branchId
     const branchDocument = await this.branchesService.findById(branchId);
     if (branchDocument.name !== branch) {
       throw new BadRequestException(
-        `Branch name '${branch}' does not match the branch with ID '${branchId}'. Expected: '${branchDocument.name}'`
+        `Branch name '${branch}' does not match the branch with ID '${branchId}'. Expected: '${branchDocument.name}'`,
       );
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = new this.userModel({
-      ...createUserDto,
-      password: hashedPassword,
-      branchId: new Types.ObjectId(createUserDto.branchId),
+
+    const newUser = await this.prisma.user.create({
+      data: {
+        name: createUserDto.name,
+        email: createUserDto.email,
+        password: hashedPassword,
+        phone: createUserDto.phone,
+        address: createUserDto.address,
+        role: createUserDto.role as any,
+        branchId: createUserDto.branchId,
+        branch: createUserDto.branch,
+        branchAddress: createUserDto.branchAddress,
+      },
     });
 
-    const savedUser = await newUser.save();
-
-    // Log user creation activity
     try {
       await this.systemActivityLogService.createLog({
         action: 'USER_CREATED',
-        details: `New user created: ${savedUser.name} (${savedUser.email}) with role ${savedUser.role}`,
+        details: `New user created: ${newUser.name} (${newUser.email}) with role ${newUser.role}`,
         performedBy: currentUser?.email || currentUser?.name || 'System',
         role: currentUser?.role || 'SYSTEM',
         device: device || 'System',
-        branchId: (currentUser as any)?.branchId?.toString() || savedUser.branchId?.toString(),
+        branchId: (currentUser as any)?.branchId?.toString() || newUser.branchId,
       });
-    } catch (logError) {
-      console.error('Failed to log user creation:', logError);
-    }
+    } catch {}
 
-    return savedUser;
+    return this.transformUser(newUser);
   }
-  async findAll(currentUser?: UserDocument): Promise<User[]> {
-    let filter: any = { isActive: true };
 
-    // Only SUPER_ADMIN and MAINTAINER can see all users
+  async findAll(currentUser?: any): Promise<any[]> {
+    const where: any = { isActive: true };
+
     if (
       currentUser &&
       ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
     ) {
-      filter = { branchId: currentUser.branchId, isActive: true };
+      where.branchId = currentUser.branchId;
     }
 
-    const users = await this.userModel
-      .find(filter)
-      .select('-password')
-      .populate('branchId', 'name')
-      .exec();
-    return users;
+    const users = await this.prisma.user.findMany({
+      where,
+      include: { branchRef: { select: { id: true, name: true } } },
+    });
+
+    return users.map(u => this.transformUser(u, true));
   }
 
-  async findById(id: string, currentUser?: UserDocument): Promise<User> {
-    const filter: any = { _id: id };
+  async findById(id: string, currentUser?: any): Promise<any> {
+    const where: any = { id };
 
     if (currentUser) {
       if (currentUser.role === UserRole.STAFF) {
-        // STAFF can only access their own profile
-        const currentUserId = currentUser._id?.toString() || (currentUser as any).userId;
-        if (currentUserId !== id) {
-          throw new NotFoundException('User not found');
-        }
+        const currentUserId = currentUser._id?.toString() || currentUser.userId || currentUser.id;
+        if (currentUserId !== id) throw new NotFoundException('User not found');
       } else if (![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)) {
-        // ADMIN can access users from their own branch only
-        filter.branchId = currentUser.branchId;
+        where.branchId = currentUser.branchId;
       }
-      // SUPER_ADMIN and MAINTAINER can access any user (no restrictions)
     }
 
-    const user = await this.userModel
-      .findOne(filter)
-      .select('-password')
-      .populate('branchId', 'name');
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-    return user;
+    const user = await this.prisma.user.findFirst({
+      where,
+      include: { branchRef: { select: { id: true, name: true } } },
+    });
+
+    if (!user) throw new NotFoundException('User not found');
+    return this.transformUser(user, true);
   }
 
-  async findByIdRaw(id: string): Promise<User | null> {
-    // Raw find without permission checks - used for JWT validation
-    return this.userModel.findById(id).select('-password').exec();
+  async findByIdRaw(id: string): Promise<any> {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) return null;
+    const { password, ...rest } = user;
+    return { ...rest, _id: user.id };
   }
 
-  async findByEmail(email: string): Promise<UserDocument> {
-    const user = await this.userModel
-      .findOne({ email });
-    return user;
+  async findByEmail(email: string): Promise<any> {
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user) return null;
+    return {
+      ...user,
+      _id: user.id,
+      toJSON: () => ({ ...user, _id: user.id }),
+    };
   }
 
   async update(
     id: string,
     updateUserDto: UpdateUserDto,
-    currentUser?: UserDocument,
+    currentUser?: any,
     device?: string,
-  ): Promise<User> {
-    const filter: any = { _id: id };
+  ): Promise<any> {
+    const where: any = { id };
 
-    // Only SUPER_ADMIN and MAINTAINER can update users from other branches
     if (
       currentUser &&
       ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
     ) {
-      filter.branchId = currentUser.branchId;
+      where.branchId = currentUser.branchId;
     }
+
+    const existing = await this.prisma.user.findFirst({ where });
+    if (!existing) throw new NotFoundException('User not found');
 
     if (updateUserDto.password) {
       updateUserDto.password = await bcrypt.hash(updateUserDto.password, 10);
     }
 
-    // Validate branch name matches branchId if both are being updated
     if (updateUserDto.branchId || updateUserDto.branch) {
-      const branchId = updateUserDto.branchId;
-      const branch = updateUserDto.branch;
+      const bId = updateUserDto.branchId;
+      const bName = updateUserDto.branch;
 
-      if (branchId && branch) {
-        // Both branchId and branch are provided - validate they match
-        const branchDocument = await this.branchesService.findById(branchId);
-        if (branchDocument.name !== branch) {
+      if (bId && bName) {
+        const branchDocument = await this.branchesService.findById(bId);
+        if (branchDocument.name !== bName) {
           throw new BadRequestException(
-            `Branch name '${branch}' does not match the branch with ID '${branchId}'. Expected: '${branchDocument.name}'`
+            `Branch name '${bName}' does not match the branch with ID '${bId}'. Expected: '${branchDocument.name}'`,
           );
         }
-      } else if (branchId && !branch) {
-        // Only branchId provided - auto-set the correct branch name
-        const branchDocument = await this.branchesService.findById(branchId);
+      } else if (bId && !bName) {
+        const branchDocument = await this.branchesService.findById(bId);
         updateUserDto.branch = branchDocument.name;
-      } else if (!branchId && branch) {
-        // Only branch name provided - this is not allowed, need branchId too
-        throw new BadRequestException(
-          'When updating branch name, branchId must also be provided'
-        );
+      } else if (!bId && bName) {
+        throw new BadRequestException('When updating branch name, branchId must also be provided');
       }
     }
 
-    if (updateUserDto.branchId) {
-      updateUserDto.branchId = new Types.ObjectId(
-        updateUserDto.branchId,
-      ) as any;
-    }
+    const updateData: any = { ...updateUserDto };
+    delete updateData.branchId;
+    if (updateUserDto.branchId) updateData.branchId = updateUserDto.branchId;
 
-    const user = await this.userModel
-      .findOneAndUpdate(filter, updateUserDto, { new: true })
-      .select('-password')
-      .populate('branchId', 'name');
+    const user = await this.prisma.user.update({
+      where: { id },
+      data: updateData,
+      include: { branchRef: { select: { id: true, name: true } } },
+    });
 
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    // Log user update activity
     try {
-      const changes = Object.keys(updateUserDto).filter(
-        (key) => key !== 'password',
-      );
-      const changeDetails =
-        changes.length > 0 ? ` - Updated: ${changes.join(', ')}` : '';
-
+      const changes = Object.keys(updateUserDto).filter(k => k !== 'password');
+      const changeDetails = changes.length > 0 ? ` - Updated: ${changes.join(', ')}` : '';
       await this.systemActivityLogService.createLog({
         action: 'USER_UPDATED',
         details: `User updated: ${user.name} (${user.email})${changeDetails}`,
@@ -274,38 +266,26 @@ export class UsersService {
         device: device || 'System',
         branchId: currentUser?.branchId?.toString(),
       });
-    } catch (logError) {
-      console.error('Failed to log user update:', logError);
-    }
+    } catch {}
 
-    return user;
+    return this.transformUser(user, true);
   }
 
-  async remove(
-    id: string,
-    currentUser?: UserDocument,
-    device?: string,
-  ): Promise<void> {
-    const filter: any = { _id: id };
+  async remove(id: string, currentUser?: any, device?: string): Promise<void> {
+    const where: any = { id };
 
-    // Only SUPER_ADMIN and MAINTAINER can delete users from other branches
     if (
       currentUser &&
       ![UserRole.SUPER_ADMIN, UserRole.MAINTAINER].includes(currentUser.role)
     ) {
-      filter.branchId = currentUser.branchId;
+      where.branchId = currentUser.branchId;
     }
 
-    const user = await this.userModel.findOne(filter);
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
+    const user = await this.prisma.user.findFirst({ where });
+    if (!user) throw new NotFoundException('User not found');
 
-    // Soft delete - set isActive to false
-    user.isActive = false;
-    await user.save();
+    await this.prisma.user.update({ where: { id }, data: { isActive: false } });
 
-    // Log user deletion activity
     try {
       await this.systemActivityLogService.createLog({
         action: 'USER_DELETED',
@@ -315,9 +295,7 @@ export class UsersService {
         device: device || 'System',
         branchId: currentUser?.branchId?.toString(),
       });
-    } catch (logError) {
-      console.error('Failed to log user deletion:', logError);
-    }
+    } catch {}
   }
 
   async updatePassword(
@@ -325,69 +303,47 @@ export class UsersService {
     newPassword: string,
     previousPassword?: string,
   ): Promise<void> {
-    const user = await this.userModel.findById(userId);
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
 
-    // Different validation logic based on whether user has temporary password
     if (user.mustChangePassword && user.isTemporaryPassword) {
-      // For temporary password users: no previous password needed
-      // Check if temporary password has expired
       if (user.temporaryPasswordExpiry && new Date() > user.temporaryPasswordExpiry) {
         throw new BadRequestException('Temporary password has expired. Please contact your administrator.');
       }
     } else {
-      // For regular users: previous password is required
-      if (!previousPassword) {
-        throw new BadRequestException('Previous password is required');
-      }
-      
-      // Verify previous password
+      if (!previousPassword) throw new BadRequestException('Previous password is required');
       const isMatch = await bcrypt.compare(previousPassword, user.password);
-      if (!isMatch) {
-        throw new ConflictException('Wrong password');
-      }
+      if (!isMatch) throw new ConflictException('Wrong password');
     }
-    
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    
-    // Update password and reset temporary password flags
-    const updateData: any = { 
-      password: hashedPassword
-    };
 
-    // If updating from temporary password, reset the flags
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    const updateData: any = { password: hashedPassword };
+
     if (user.mustChangePassword && user.isTemporaryPassword) {
       updateData.isTemporaryPassword = false;
-      updateData.temporaryPasswordExpiry = undefined;
+      updateData.temporaryPasswordExpiry = null;
       updateData.mustChangePassword = false;
     }
 
-    await this.userModel.findByIdAndUpdate(userId, updateData);
+    await this.prisma.user.update({ where: { id: userId }, data: updateData });
 
-    // Log password update activity
     try {
       const actionType = user.isTemporaryPassword ? 'TEMPORARY_PASSWORD_UPDATED' : 'PASSWORD_UPDATED';
-      const details = user.isTemporaryPassword 
+      const details = user.isTemporaryPassword
         ? `User converted temporary password to permanent: ${user.name} (${user.email})`
         : `User changed password: ${user.name} (${user.email})`;
-
       await this.systemActivityLogService.createLog({
         action: actionType,
         details,
         performedBy: user.email,
         role: user.role,
         device: 'System',
-        branchId: user.branchId?.toString(),
+        branchId: user.branchId,
       });
-    } catch (logError) {
-      // Don't fail if logging fails
-    }
+    } catch {}
   }
 
   private generateTemporaryPassword(): string {
-    // Generate a secure 8-character temporary password
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
     let tempPassword = '';
     for (let i = 0; i < 8; i++) {
@@ -399,30 +355,26 @@ export class UsersService {
   async forgotPassword(
     userId: string,
     performedByUser?: { email: string; role: string; name?: string },
-    device?: string
+    device?: string,
   ): Promise<{ temporaryPassword: string; expiresAt: Date }> {
-    const user = await this.userModel.findById(userId);
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-    
-    // Generate temporary password
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
     const temporaryPassword = this.generateTemporaryPassword();
     const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
-    
-    // Set expiry to 24 hours from now
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + 24);
-    
-    // Update user with temporary password settings
-    await this.userModel.findByIdAndUpdate(userId, { 
-      password: hashedPassword,
-      isTemporaryPassword: true,
-      temporaryPasswordExpiry: expiresAt,
-      mustChangePassword: true,
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        password: hashedPassword,
+        isTemporaryPassword: true,
+        temporaryPasswordExpiry: expiresAt,
+        mustChangePassword: true,
+      },
     });
 
-    // Log password reset activity
     try {
       await this.systemActivityLogService.createLog({
         action: 'TEMPORARY_PASSWORD_RESET',
@@ -431,21 +383,16 @@ export class UsersService {
         role: performedByUser?.role || 'MAINTAINER',
         device: device || 'System',
       });
-    } catch (logError) {
-      // Don't fail if logging fails
-    }
+    } catch {}
 
-    return {
-      temporaryPassword,
-      expiresAt,
-    };
+    return { temporaryPassword, expiresAt };
   }
 
-  async getUsersByBranch(branchId: string): Promise<User[]> {
-    return this.userModel
-      .find({ branchId: new Types.ObjectId(branchId) })
-      .select('-password')
-      .populate('branchId', 'name')
-      .exec();
+  async getUsersByBranch(branchId: string): Promise<any[]> {
+    const users = await this.prisma.user.findMany({
+      where: { branchId },
+      include: { branchRef: { select: { id: true, name: true } } },
+    });
+    return users.map(u => this.transformUser(u, true));
   }
 }

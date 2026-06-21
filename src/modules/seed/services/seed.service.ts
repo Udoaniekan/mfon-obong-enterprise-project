@@ -23,7 +23,7 @@ export class SeedService {
     try {
       defaultBranch = await this.branchesService.create({
         name: 'Head Office',
-        address: 'Sheelter Afrique',
+        address: 'Shelter Afrique',
         phone: '+1234567890',
       });
       console.log(`Created default branch: ${defaultBranch.name}`);
@@ -41,11 +41,11 @@ export class SeedService {
     }
 
     const superAdmin = {
-      name: 'Super Admin',
+      name: 'Ndifreke Mfon',
       email: 'superadmin@example.com',
       password: 'Superadmin123!',
       phone: '+1234567890',
-      address: 'Head Office, Sheelter Afrique',
+      address: 'Head Office, Shelter Afrique',
       role: UserRole.SUPER_ADMIN,
       branchId: defaultBranch._id.toString(),
       branch: 'Head Office',
@@ -55,13 +55,13 @@ export class SeedService {
     try {
       await this.usersService.create(superAdmin);
       console.log(`Created super admin: ${superAdmin.email}`);
-    } catch (error) {
+    } catch (error: any) {
       if (error instanceof ConflictException) {
         console.log(`Super admin already exists: ${superAdmin.email}`);
       } else {
         console.error(
           `Error creating super admin ${superAdmin.email}:`,
-          error.message,
+          error?.message,
         );
       }
     }
@@ -146,13 +146,13 @@ export class SeedService {
       try {
         await this.categoriesService.create(category);
         console.log(`Created category: ${category.name}`);
-      } catch (error) {
+      } catch (error: any) {
         if (error instanceof ConflictException) {
           console.log(`Category already exists: ${category.name}`);
         } else {
           console.error(
             `Error creating category ${category.name}:`,
-            error.message,
+            error?.message,
           );
         }
       }
@@ -189,13 +189,13 @@ export class SeedService {
     try {
       await this.usersService.create(maintainer);
       console.log(`Created maintainer: ${maintainer.email}`);
-    } catch (error) {
+    } catch (error: any) {
       if (error instanceof ConflictException) {
         console.log(`Maintainer already exists: ${maintainer.email}`);
       } else {
         console.error(
           `Error creating maintainer ${maintainer.email}:`,
-          error.message,
+          error?.message,
         );
       }
     }
