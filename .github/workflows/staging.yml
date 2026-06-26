@@ -1,26 +1,14 @@
-# ===========================================
-# STAGING Deployment Workflow
-# ===========================================
-# Triggers: Push to 'staging' branch
-# Deploys to: Render (free tier)
-
 name: Deploy to Staging
 
-# When to run this workflow
 on:
   push:
     branches:
-      - staging    # ONLY run on staging branch
+      - staging
 
-# Environment variables used across jobs
 env:
-  DOCKER_IMAGE: udoaniekan/mfon-obong-enterprise
-  RENDER_SERVICE_ID: srv-d4hk160gjchc73etggtg
+  DOCKER_IMAGE: ${{ secrets.DOCKER_USERNAME }}/mfon-obong-backend
 
 jobs:
-  # ===========================================
-  # JOB 1: Run Tests & Build
-  # ===========================================
   test:
     name: Run Tests
     runs-on: ubuntu-latest
@@ -44,18 +32,14 @@ jobs:
 
       - name: Run tests
         run: npm run test --if-present
-        continue-on-error: true
 
       - name: Build application
         run: npm run build
 
-  # ===========================================
-  # JOB 2: Build & Push Docker Image
-  # ===========================================
   build-and-push:
-    name: Build & Push Docker Image
+    name: Build and Push Docker Image
     runs-on: ubuntu-latest
-    needs: test    # Wait for 'test' job to pass first
+    needs: test
 
     steps:
       - name: Checkout code
@@ -70,7 +54,7 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and Push Docker image
+      - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -82,43 +66,31 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ===========================================
-  # JOB 3: Deploy to Render
-  # ===========================================
   deploy:
-    name: Deploy to Render
+    name: Deploy to CapRover Staging
     runs-on: ubuntu-latest
-    needs: build-and-push    # Wait for image to be pushed first
-    environment: staging     # Use 'staging' environment secrets
+    needs: build-and-push
+    environment: staging
 
     steps:
-      - name: Deploy to Render
+      - name: Deploy image to CapRover
         run: |
-          echo "🚀 Triggering deployment to Render..."
-          echo "Service ID: ${{ env.RENDER_SERVICE_ID }}"
+          RESPONSE=$(curl -s -X POST "${{ secrets.CAPROVER_URL }}/api/v2/login" \
+            -H "Content-Type: application/json" \
+            -d "{\"password\":\"${{ secrets.CAPROVER_PASSWORD }}\"}")
 
-          RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST \
-            "https://api.render.com/v1/services/${{ env.RENDER_SERVICE_ID }}/deploys" \
-            -H "Accept: application/json" \
-            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}")
+          TOKEN=$(echo $RESPONSE | jq -r '.data.token')
 
-          echo "Response: $RESPONSE"
-
-          HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS" | cut -d: -f2)
-
-          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
-            echo "✅ Deployment triggered successfully!"
-          else
-            echo "❌ Deployment may have failed. Check Render dashboard."
+          if [ "$TOKEN" = "null" ] || [ -z "$TOKEN" ]; then
+            echo "CapRover login failed"
+            echo "Response: $RESPONSE"
+            exit 1
           fi
 
-      - name: Deployment Summary
-        run: |
-          echo "========================================"
-          echo "🎉 STAGING DEPLOYMENT COMPLETE"
-          echo "========================================"
-          echo "Image: ${{ env.DOCKER_IMAGE }}:staging"
-          echo "Commit: ${{ github.sha }}"
-          echo "Branch: ${{ github.ref_name }}"
-          echo "Render Service: ${{ env.RENDER_SERVICE_ID }}"
-          echo "========================================"
+          DEPLOY_RESPONSE=$(curl -s -X POST "${{ secrets.CAPROVER_URL }}/api/v2/user/apps/appData" \
+            -H "x-captain-auth: $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"appName\":\"${{ secrets.CAPROVER_STAGING_APP_NAME }}\",\"captainDefinitionContent\":\"{\\\"schemaVersion\\\":2,\\\"imageName\\\":\\\"${{ env.DOCKER_IMAGE }}:staging\\\"}\"}")
+
+          echo "Deploy response: $DEPLOY_RESPONSE"
+          echo "Staging deployment triggered successfully"
