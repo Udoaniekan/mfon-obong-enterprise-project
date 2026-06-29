@@ -5,8 +5,6 @@ import {
   HttpException,
   HttpStatus,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
-import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { Response } from 'express';
 
 @Catch()
@@ -21,17 +19,17 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
-      const response = exception.getResponse();
+      const res = exception.getResponse();
       message =
-        typeof response === 'string'
-          ? response
-          : (response as any).message || message;
-      error = typeof response === 'string' ? { message: response } : response;
-    } else if (exception instanceof PrismaClientKnownRequestError) {
+        typeof res === 'string'
+          ? res
+          : (res as any).message || message;
+      error = typeof res === 'string' ? { message: res } : res;
+    } else if (isPrismaError(exception)) {
       if (exception.code === 'P2002') {
         status = HttpStatus.CONFLICT;
         message = 'Duplicate entry';
-        const target = (exception.meta as any)?.target;
+        const target = exception.meta?.target;
         error = {
           message,
           field: Array.isArray(target) ? target[0] : target,
@@ -46,4 +44,15 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       error,
     });
   }
+}
+
+function isPrismaError(
+  exception: unknown,
+): exception is { code: string; meta?: { target?: string | string[] } } {
+  return (
+    exception !== null &&
+    typeof exception === 'object' &&
+    'code' in exception &&
+    'clientVersion' in exception
+  );
 }
