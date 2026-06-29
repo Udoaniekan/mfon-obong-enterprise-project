@@ -50,7 +50,10 @@ ENV NODE_ENV=production
 COPY package*.json ./
 
 # Install ONLY production dependencies (no devDependencies)
-RUN npm ci --only=production
+# --omit=dev is the modern flag for skipping devDependencies
+# --ignore-scripts skips lifecycle scripts like "prepare: husky" which
+# only makes sense on a developer machine, not inside a Docker container
+RUN npm ci --omit=dev --ignore-scripts
 
 # Copy the Prisma schema into the production image
 # We need this here too because Prisma generates its client
