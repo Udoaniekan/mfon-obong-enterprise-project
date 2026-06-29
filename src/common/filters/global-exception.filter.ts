@@ -6,6 +6,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { Response } from 'express';
 
 @Catch()
@@ -26,7 +27,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
           ? response
           : (response as any).message || message;
       error = typeof response === 'string' ? { message: response } : response;
-    } else if (exception instanceof Prisma.PrismaClientKnownRequestError) {
+    } else if (exception instanceof PrismaClientKnownRequestError) {
       if (exception.code === 'P2002') {
         status = HttpStatus.CONFLICT;
         message = 'Duplicate entry';
