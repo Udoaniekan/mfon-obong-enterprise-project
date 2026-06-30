@@ -6,6 +6,9 @@
 
 FROM node:20-alpine AS builder
 
+# Install OpenSSL — required by Prisma's schema engine on Alpine Linux
+RUN apk add --no-cache openssl
+
 # Set working directory inside the container
 WORKDIR /app
 
@@ -39,6 +42,9 @@ RUN npm run build
 # Start fresh with a clean image (no dev dependencies, no source code)
 
 FROM node:20-alpine AS production
+
+# Install OpenSSL — required by Prisma's schema engine on Alpine Linux
+RUN apk add --no-cache openssl
 
 # Set working directory
 WORKDIR /app
