@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.2](https://github.com/mfon-obong-nigeria-enterprises/mfon-obong-enterprise-backend/compare/v1.2.1...v1.2.2) (2026-06-30)
+
+
+### Bug Fixes
+
+* use official caprover deploy action instead of raw curl ([23d7cff](https://github.com/mfon-obong-nigeria-enterprises/mfon-obong-enterprise-backend/commit/23d7cff31d92013a72ded284640c571cac36bd84))
+* use official caprover deploy action instead of raw curl ([b1566dd](https://github.com/mfon-obong-nigeria-enterprises/mfon-obong-enterprise-backend/commit/b1566ddaf3f336119091621441d4744d3f1b5a2d))
+
 ## [1.2.1](https://github.com/mfon-obong-nigeria-enterprises/mfon-obong-enterprise-backend/compare/v1.2.0...v1.2.1) (2026-06-30)
 
 
