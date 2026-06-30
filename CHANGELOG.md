@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.3](https://github.com/mfon-obong-nigeria-enterprises/mfon-obong-enterprise-backend/compare/v1.2.2...v1.2.3) (2026-06-30)
+
+
+### Bug Fixes
+
+* install openssl in Docker image for Prisma on Alpine Linux ([75130ab](https://github.com/mfon-obong-nigeria-enterprises/mfon-obong-enterprise-backend/commit/75130ab34492c4c47155c103194004ef6f6589a4))
+* install openssl in Docker image for Prisma on Alpine Linux ([45004e9](https://github.com/mfon-obong-nigeria-enterprises/mfon-obong-enterprise-backend/commit/45004e9608afa5b92ffc7b3a8e76096d481c65cc))
+
 ## [1.2.2](https://github.com/mfon-obong-nigeria-enterprises/mfon-obong-enterprise-backend/compare/v1.2.1...v1.2.2) (2026-06-30)
 
 
