@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.1](https://github.com/mfon-obong-nigeria-enterprises/mfon-obong-enterprise-backend/compare/v1.2.0...v1.2.1) (2026-06-30)
+
+
+### Bug Fixes
+
+* check both release_created and releases_created outputs ([152cbf7](https://github.com/mfon-obong-nigeria-enterprises/mfon-obong-enterprise-backend/commit/152cbf7866a1a6c4b9d8fc7040f9f03405818ea5))
+* check both release_created and releases_created outputs ([079cab2](https://github.com/mfon-obong-nigeria-enterprises/mfon-obong-enterprise-backend/commit/079cab26f783d4c3b5e9c31dd9f0a5fe282cf44b))
+
 ## [1.2.0](https://github.com/mfon-obong-nigeria-enterprises/mfon-obong-enterprise-backend/compare/v1.1.0...v1.2.0) (2026-06-30)
 
 
