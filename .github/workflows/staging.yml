@@ -1,45 +1,43 @@
-name: Deploy to Staging
+name: Staging Pipeline
 
 on:
   push:
     branches:
       - staging
 
+permissions:
+  contents: write
+  pull-requests: write
+
 env:
   DOCKER_IMAGE: ${{ secrets.DOCKER_USERNAME }}/mfon-obong-backend
 
 jobs:
-  test:
-    name: Run Tests
+  # ─── Step 1: Always runs on every push to staging ───────────────────────────
+  # Creates a release PR if there are new conventional commits.
+  # When the release PR is merged, it outputs release_created=true
+  # which unlocks the build and deploy jobs below.
+  release-please:
+    name: Create Release PR
     runs-on: ubuntu-latest
-
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      version: ${{ steps.release.outputs.version }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: googleapis/release-please-action@v4
+        id: release
         with:
-          node-version: '20'
-          cache: 'npm'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          release-type: node
+          target-branch: staging
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run linter
-        run: npm run lint
-        continue-on-error: true
-
-      - name: Run tests
-        run: npm run test --if-present
-
-      - name: Build application
-        run: npm run build
-
+  # ─── Step 2: Only runs when the release PR has been merged ──────────────────
+  # Builds the Docker image and pushes it to Docker Hub
   build-and-push:
     name: Build and Push Docker Image
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
     runs-on: ubuntu-latest
-    needs: test
 
     steps:
       - name: Checkout code
@@ -66,10 +64,13 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # ─── Step 3: Only runs after Docker image is built ──────────────────────────
+  # Deploys the new image to CapRover staging environment
   deploy:
     name: Deploy to CapRover Staging
+    needs: [release-please, build-and-push]
+    if: needs.release-please.outputs.release_created == 'true'
     runs-on: ubuntu-latest
-    needs: build-and-push
     environment: staging
 
     steps:
