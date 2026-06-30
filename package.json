@@ -1,6 +1,6 @@
 {
   "name": "mfon-obong-enterprise",
-  "version": "0.0.1",
+  "version": "1.2.3",
   "description": "",
   "author": "",
   "private": true,
@@ -22,7 +22,8 @@
     "seed": "ts-node -r tsconfig-paths/register src/cli.ts",
     "seed:superadmin": "npm run seed -- seed:superadmin",
     "seed:maintainer": "npm run seed -- seed:maintainer",
-    "seed:categories": "npm run seed -- seed:categories"
+    "seed:categories": "npm run seed -- seed:categories",
+    "prepare": "husky"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",
@@ -56,6 +57,8 @@
     "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
+    "@commitlint/cli": "^21.1.0",
+    "@commitlint/config-conventional": "^21.1.0",
     "@nestjs/cli": "^11.0.10",
     "@nestjs/schematics": "^10.0.0",
     "@nestjs/testing": "^10.0.0",
@@ -71,6 +74,7 @@
     "eslint": "^8.0.0",
     "eslint-config-prettier": "^9.0.0",
     "eslint-plugin-prettier": "^5.0.0",
+    "husky": "^9.1.7",
     "jest": "^29.5.0",
     "prettier": "^3.0.0",
     "prisma": "^5.22.0",

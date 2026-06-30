@@ -6,6 +6,9 @@
 
 FROM node:20-alpine AS builder
 
+# Install OpenSSL — required by Prisma's schema engine on Alpine Linux
+RUN apk add --no-cache openssl
+
 # Set working directory inside the container
 WORKDIR /app
 
@@ -16,6 +19,15 @@ COPY package*.json ./
 
 # Install ALL dependencies (including devDependencies for building)
 RUN npm ci
+
+# Copy the Prisma schema BEFORE building
+# Prisma needs to read schema.prisma to generate the database client.
+# Without this step, the app will crash at runtime — it won't know
+# how to talk to the database.
+COPY prisma ./prisma
+
+# Generate the Prisma client (reads schema.prisma, outputs typed DB client)
+RUN npx prisma generate
 
 # Now copy the rest of the source code
 COPY . .
@@ -31,6 +43,9 @@ RUN npm run build
 
 FROM node:20-alpine AS production
 
+# Install OpenSSL — required by Prisma's schema engine on Alpine Linux
+RUN apk add --no-cache openssl
+
 # Set working directory
 WORKDIR /app
 
@@ -41,7 +56,19 @@ ENV NODE_ENV=production
 COPY package*.json ./
 
 # Install ONLY production dependencies (no devDependencies)
-RUN npm ci --only=production
+# --omit=dev is the modern flag for skipping devDependencies
+# --ignore-scripts skips lifecycle scripts like "prepare: husky" which
+# only makes sense on a developer machine, not inside a Docker container
+RUN npm ci --omit=dev --ignore-scripts
+
+# Copy the Prisma schema into the production image
+# We need this here too because Prisma generates its client
+# per environment — the production image needs its own copy
+COPY prisma ./prisma
+
+# Generate the Prisma client in the production image
+# (the generated client in the builder stage belongs to that stage only)
+RUN npx prisma generate
 
 # Copy the built JavaScript from the builder stage
 COPY --from=builder /app/dist ./dist
@@ -49,5 +76,8 @@ COPY --from=builder /app/dist ./dist
 # Expose the port your app runs on
 EXPOSE 3000
 
-# Command to run the application
-CMD ["node", "--max-old-space-size=512", "dist/main.js"]
+# Start command:
+# 1. "npx prisma migrate deploy" — applies any pending database migrations
+#    before the app starts. Safe to run on every startup (skips already-applied ones).
+# 2. "node dist/main.js" — starts the NestJS application
+CMD ["sh", "-c", "npx prisma migrate deploy && node --max-old-space-size=512 dist/main.js"]

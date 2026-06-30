@@ -15,27 +15,25 @@ async function bootstrap() {
   app.enableCors({
     origin: (origin, callback) => {
       const allowedOrigins = [
-        // Development origins
+        // Local development
         'http://localhost:3000',
         'http://localhost:3001',
         'http://localhost:4200',
         'http://localhost:5173',
-        // Current frontend deployments
-        'https://mfon-obong-enterprises.pipeops.net',
-        'https://frontend-tawny-pi-78.vercel.app',
-        'https://frontend-mfon.vercel.app',
-        // Production domains
+        // Production frontend (Cloudflare Pages)
         'https://mfonobongenterprise.com',
         'https://www.mfonobongenterprise.com',
-        // Render deployment (frontend) - allow this origin as well
-        'https://mfon-obong-enterprise.onrender.com',
-        'https://mfon-obong-enterprises.onrender.com',
+        // Staging frontend (Cloudflare Pages)
+        'https://staging.mfonobongenterprise.com',
+        // Backend self-references (CapRover health checks and internal calls)
+        'https://mfon-obong-backend-staging.mfonobongenterprise.com',
+        'https://mfon-obong-backend-production.mfonobongenterprise.com',
       ];
 
-      // Allow all Vercel preview and production deployments
-      const vercelPattern = /^https:\/\/.*\.vercel\.app$/;
+      // Allow Cloudflare Pages preview deployment URLs (*.pages.dev)
+      const cloudflarePattern = /^https:\/\/.*\.pages\.dev$/;
 
-      if (!origin || allowedOrigins.includes(origin) || vercelPattern.test(origin)) {
+      if (!origin || allowedOrigins.includes(origin) || cloudflarePattern.test(origin)) {
         callback(null, true);
       } else {
         Logger.warn(`CORS blocked origin: ${origin}`);

@@ -1,61 +1,43 @@
-# ===========================================
-# STAGING Deployment Workflow
-# ===========================================
-# Triggers: Push to 'staging' branch
-# Deploys to: Render (free tier)
+name: Staging Pipeline
 
-name: Deploy to Staging
-
-# When to run this workflow
 on:
   push:
     branches:
-      - staging    # ONLY run on staging branch
+      - staging
 
-# Environment variables used across jobs
+permissions:
+  contents: write
+  pull-requests: write
+
 env:
-  DOCKER_IMAGE: udoaniekan/mfon-obong-enterprise
-  RENDER_SERVICE_ID: srv-d4hk160gjchc73etggtg
+  DOCKER_IMAGE: ${{ secrets.DOCKER_USERNAME }}/mfon-obong-backend
 
 jobs:
-  # ===========================================
-  # JOB 1: Run Tests & Build
-  # ===========================================
-  test:
-    name: Run Tests
+  # ─── Step 1: Always runs on every push to staging ───────────────────────────
+  # Creates a release PR if there are new conventional commits.
+  # When the release PR is merged, it outputs release_created=true
+  # which unlocks the build and deploy jobs below.
+  release-please:
+    name: Create Release PR
     runs-on: ubuntu-latest
-
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      version: ${{ steps.release.outputs.version }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: googleapis/release-please-action@v4
+        id: release
         with:
-          node-version: '20'
-          cache: 'npm'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          release-type: node
+          target-branch: staging
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run linter
-        run: npm run lint
-        continue-on-error: true
-
-      - name: Run tests
-        run: npm run test --if-present
-        continue-on-error: true
-
-      - name: Build application
-        run: npm run build
-
-  # ===========================================
-  # JOB 2: Build & Push Docker Image
-  # ===========================================
+  # ─── Step 2: Only runs when the release PR has been merged ──────────────────
+  # Builds the Docker image and pushes it to Docker Hub
   build-and-push:
-    name: Build & Push Docker Image
+    name: Build and Push Docker Image
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created || needs.release-please.outputs.releases_created }}
     runs-on: ubuntu-latest
-    needs: test    # Wait for 'test' job to pass first
 
     steps:
       - name: Checkout code
@@ -70,7 +52,7 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and Push Docker image
+      - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -82,43 +64,20 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ===========================================
-  # JOB 3: Deploy to Render
-  # ===========================================
+  # ─── Step 3: Only runs after Docker image is built ──────────────────────────
+  # Deploys the new image to CapRover staging environment
   deploy:
-    name: Deploy to Render
+    name: Deploy to CapRover Staging
+    needs: [release-please, build-and-push]
+    if: ${{ needs.release-please.outputs.release_created || needs.release-please.outputs.releases_created }}
     runs-on: ubuntu-latest
-    needs: build-and-push    # Wait for image to be pushed first
-    environment: staging     # Use 'staging' environment secrets
+    environment: staging
 
     steps:
-      - name: Deploy to Render
-        run: |
-          echo "🚀 Triggering deployment to Render..."
-          echo "Service ID: ${{ env.RENDER_SERVICE_ID }}"
-
-          RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST \
-            "https://api.render.com/v1/services/${{ env.RENDER_SERVICE_ID }}/deploys" \
-            -H "Accept: application/json" \
-            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}")
-
-          echo "Response: $RESPONSE"
-
-          HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS" | cut -d: -f2)
-
-          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
-            echo "✅ Deployment triggered successfully!"
-          else
-            echo "❌ Deployment may have failed. Check Render dashboard."
-          fi
-
-      - name: Deployment Summary
-        run: |
-          echo "========================================"
-          echo "🎉 STAGING DEPLOYMENT COMPLETE"
-          echo "========================================"
-          echo "Image: ${{ env.DOCKER_IMAGE }}:staging"
-          echo "Commit: ${{ github.sha }}"
-          echo "Branch: ${{ github.ref_name }}"
-          echo "Render Service: ${{ env.RENDER_SERVICE_ID }}"
-          echo "========================================"
+      - name: Deploy image to CapRover
+        uses: caprover/deploy-from-github@v1.1.2
+        with:
+          server: ${{ secrets.CAPROVER_URL }}
+          app: ${{ secrets.CAPROVER_STAGING_APP_NAME }}
+          token: ${{ secrets.CAPROVER_STAGING_APP_TOKEN }}
+          image: ${{ env.DOCKER_IMAGE }}:staging

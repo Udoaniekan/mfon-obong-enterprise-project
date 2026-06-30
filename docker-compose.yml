@@ -22,21 +22,25 @@ services:
       - "3000:3000"
 
     # Environment variables for the app
+    # Values with ${...} are read from your .env file at runtime
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - MONGODB_URI=mongodb://mongo:27017/mfon-obong
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/mfon_obong?schema=public
       - JWT_SECRET=${JWT_SECRET}
       - JWT_EXPIRATION=${JWT_EXPIRATION}
       - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}
       - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}
       - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}
 
-    # Wait for MongoDB to be ready before starting
+    # Wait for PostgreSQL to pass its health check before starting the app.
+    # "depends_on" alone only waits for the container to START, not be READY.
+    # The health check ensures Postgres is actually accepting connections first.
     depends_on:
-      - mongo
+      postgres:
+        condition: service_healthy
 
-    # Restart policy
+    # Restart policy — restart the container if it crashes
     restart: unless-stopped
 
     # Connect to our custom network
@@ -44,25 +48,40 @@ services:
       - mfon-obong-network
 
   # ===========================================
-  # SERVICE 2: MongoDB Database
+  # SERVICE 2: PostgreSQL Database
   # ===========================================
-  mongo:
-    # Use official MongoDB image
-    image: mongo:7.0
+  postgres:
+    # Use official PostgreSQL Alpine image (smaller size)
+    image: postgres:16-alpine
 
     # Container name
-    container_name: mfon-obong-mongo
+    container_name: mfon-obong-postgres
 
-    # Port mapping (optional - for external access/debugging)
+    # PostgreSQL configuration
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=mfon_obong
+
+    # Port mapping (useful for connecting with a DB client like TablePlus during development)
     ports:
-      - "27017:27017"
+      - "5432:5432"
 
-    # Persist data even if container is deleted
+    # Persist data even if the container is deleted
     volumes:
-      - mongo-data:/data/db
+      - postgres-data:/var/lib/postgresql/data
 
     # Restart policy
     restart: unless-stopped
+
+    # Health check — Docker will test this command every 10 seconds.
+    # pg_isready returns success only when PostgreSQL is ready to accept connections.
+    # The app container waits for this before starting.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
     # Connect to our custom network
     networks:
@@ -79,4 +98,4 @@ networks:
 # VOLUMES: Persist data outside containers
 # ===========================================
 volumes:
-  mongo-data:
+  postgres-data:
