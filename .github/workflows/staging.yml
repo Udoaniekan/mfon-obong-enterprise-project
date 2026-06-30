@@ -36,7 +36,7 @@ jobs:
   build-and-push:
     name: Build and Push Docker Image
     needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
+    if: ${{ needs.release-please.outputs.release_created }}
     runs-on: ubuntu-latest
 
     steps:
@@ -69,7 +69,7 @@ jobs:
   deploy:
     name: Deploy to CapRover Staging
     needs: [release-please, build-and-push]
-    if: needs.release-please.outputs.release_created == 'true'
+    if: ${{ needs.release-please.outputs.release_created }}
     runs-on: ubuntu-latest
     environment: staging
 
