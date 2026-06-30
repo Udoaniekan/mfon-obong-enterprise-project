@@ -75,23 +75,9 @@ jobs:
 
     steps:
       - name: Deploy image to CapRover
-        run: |
-          RESPONSE=$(curl -s -X POST "${{ secrets.CAPROVER_URL }}/api/v2/login" \
-            -H "Content-Type: application/json" \
-            -d "{\"password\":\"${{ secrets.CAPROVER_PASSWORD }}\"}")
-
-          TOKEN=$(echo $RESPONSE | jq -r '.data.token')
-
-          if [ "$TOKEN" = "null" ] || [ -z "$TOKEN" ]; then
-            echo "CapRover login failed"
-            echo "Response: $RESPONSE"
-            exit 1
-          fi
-
-          DEPLOY_RESPONSE=$(curl -s -X POST "${{ secrets.CAPROVER_URL }}/api/v2/user/apps/appData" \
-            -H "x-captain-auth: $TOKEN" \
-            -H "Content-Type: application/json" \
-            -d "{\"appName\":\"${{ secrets.CAPROVER_STAGING_APP_NAME }}\",\"captainDefinitionContent\":\"{\\\"schemaVersion\\\":2,\\\"imageName\\\":\\\"${{ env.DOCKER_IMAGE }}:staging\\\"}\"}")
-
-          echo "Deploy response: $DEPLOY_RESPONSE"
-          echo "Staging deployment triggered successfully"
+        uses: caprover/deploy-from-github@v1.1.2
+        with:
+          server: ${{ secrets.CAPROVER_URL }}
+          app: ${{ secrets.CAPROVER_STAGING_APP_NAME }}
+          token: ${{ secrets.CAPROVER_STAGING_APP_TOKEN }}
+          image: ${{ env.DOCKER_IMAGE }}:staging
