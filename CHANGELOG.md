@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.0](https://github.com/mfon-obong-nigeria-enterprises/mfon-obong-enterprise-backend/compare/v1.2.3...v1.3.0) (2026-07-02)
+
+
+### Features
+
+* add HTTP request logging middleware ([44a4513](https://github.com/mfon-obong-nigeria-enterprises/mfon-obong-enterprise-backend/commit/44a4513466b9db7d3dc6df191faafba8b3347d6c))
+* add HTTP request logging middleware ([fe500d3](https://github.com/mfon-obong-nigeria-enterprises/mfon-obong-enterprise-backend/commit/fe500d32a8a0572d3b419ce2b1e2150dab85ae63))
+
 ## [1.2.3](https://github.com/mfon-obong-nigeria-enterprises/mfon-obong-enterprise-backend/compare/v1.2.2...v1.2.3) (2026-06-30)
 
 

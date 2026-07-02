@@ -11,6 +11,16 @@ async function bootstrap() {
   // Enable cookie parser middleware
   app.use(cookieParser());
 
+  // HTTP request logging
+  app.use((req: any, res: any, next: any) => {
+    const start = Date.now();
+    res.on('finish', () => {
+      const duration = Date.now() - start;
+      Logger.log(`${req.method} ${req.originalUrl} ${res.statusCode} ${duration}ms`, 'HTTP');
+    });
+    next();
+  });
+
   // Enable CORS with proper configuration
   app.enableCors({
     origin: (origin, callback) => {
